@@ -95,6 +95,7 @@ h1 { margin: 5px 0 0; font-size: 17px; line-height: 1; letter-spacing: -0.035em;
 .pattern-edge.selected { filter: drop-shadow(0 0 3px rgba(0,0,0,.28)); }
 .pattern-vertex { pointer-events: none; }
 .empty-state { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+.empty-state[hidden] { display: none; }
 .legend { height: 45px; display: flex; align-items: center; gap: 13px; padding: 0 16px; border-top: 1px solid var(--line); font: 500 9px/1 DM Mono, monospace; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .swatch { width: 16px; height: 2px; display: inline-block; background: #aaa; }
