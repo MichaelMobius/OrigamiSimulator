@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 
 const baseUrl = process.env.ORIGAMI_LAB_URL ?? "http://127.0.0.1:5173/apps/lab/";
 const baseOrigin = new URL(baseUrl).origin;
+const criticalTypes = new Set(["document", "script", "stylesheet", "xhr", "fetch"]);
 const browser = await chromium.launch({
   headless: true,
   args: [
@@ -19,14 +20,26 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const errors = [];
   const failedRequests = [];
+  const badResponses = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   page.on("requestfailed", (request) => {
+    if (!criticalTypes.has(request.resourceType())) return;
     try {
       if (new URL(request.url()).origin !== baseOrigin) return;
     } catch {
       return;
     }
-    failedRequests.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`);
+    failedRequests.push(`${request.resourceType()} ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`);
+  });
+  page.on("response", (response) => {
+    const request = response.request();
+    if (!criticalTypes.has(request.resourceType()) || response.status() < 400) return;
+    try {
+      if (new URL(response.url()).origin !== baseOrigin) return;
+    } catch {
+      return;
+    }
+    badResponses.push(`${response.status()} ${request.resourceType()} ${response.url()}`);
   });
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
@@ -73,7 +86,8 @@ try {
   const metric = await page.locator("#frame-metric").innerText();
   assert.match(metric, /% error · 200 steps/);
   assert.equal(errors.length, 0, `page errors: ${errors.join("\n")}`);
-  assert.equal(failedRequests.length, 0, `failed same-origin requests: ${failedRequests.join("\n")}`);
+  assert.equal(failedRequests.length, 0, `failed critical same-origin requests: ${failedRequests.join("\n")}`);
+  assert.equal(badResponses.length, 0, `bad critical same-origin responses: ${badResponses.join("\n")}`);
 
   const artifactDir = path.resolve("artifacts");
   fs.mkdirSync(artifactDir, { recursive: true });
@@ -93,6 +107,7 @@ try {
       assignmentMagnitudePreserved: true,
       pageErrors: errors,
       failedRequests,
+      badResponses,
     }, null, 2)}\n`,
   );
   console.log(`Origami Lab v0.3.1 smoke test passed at ${baseUrl}: ${metric}`);
