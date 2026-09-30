@@ -2,7 +2,8 @@
     "use strict";
 
     var resumeAfterRun = false;
-    var isHeadless = /(?:\?|&)model=__origami_lab_headless__(?:&|$)/.test(root.location.search);
+    var locationSearch = root.location && typeof root.location.search === "string" ? root.location.search : "";
+    var isHeadless = /(?:\?|&)model=__origami_lab_headless__(?:&|$)/.test(locationSearch);
 
     function requireGlobals() {
         var g = root.globals;

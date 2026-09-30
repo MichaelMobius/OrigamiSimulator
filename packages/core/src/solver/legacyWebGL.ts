@@ -68,7 +68,7 @@ export class LegacyWebGLSolverAdapter implements OrigamiSolver {
     }
     const maxIterations = nonNegativeInteger(request.maxIterations, this.defaultIterations);
     const tolerance = optionalNonNegativeFinite(request.tolerance, "tolerance");
-    const expectedVertices = request.graph.vertices_coords?.length ?? 0;
+    const expectedVertices = request.graph.vertices_coords?.length;
 
     try {
       await this.runtime.loadFold(request.graph);
@@ -108,8 +108,11 @@ export class LegacyWebGLSolverAdapter implements OrigamiSolver {
   }
 }
 
-function validateSnapshot(snapshot: LegacyWebGLSnapshot, expectedVertices: number): LegacyWebGLSnapshot {
-  if (snapshot.verticesCoords.length !== expectedVertices) {
+function validateSnapshot(
+  snapshot: LegacyWebGLSnapshot,
+  expectedVertices: number | undefined,
+): LegacyWebGLSnapshot {
+  if (expectedVertices !== undefined && snapshot.verticesCoords.length !== expectedVertices) {
     throw new Error(
       `Legacy solver returned ${snapshot.verticesCoords.length} vertices; expected ${expectedVertices}.`,
     );
