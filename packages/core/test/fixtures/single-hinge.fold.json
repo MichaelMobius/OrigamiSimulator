@@ -1,0 +1,10 @@
+{
+  "file_spec": 1.1,
+  "file_creator": "Origami Lab regression fixture",
+  "file_title": "single-hinge",
+  "vertices_coords": [[0, 0], [1, 0], [1, 1], [0, 1]],
+  "edges_vertices": [[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]],
+  "edges_assignment": ["B", "B", "B", "B", "V"],
+  "edges_foldAngle": [0, 0, 0, 0, 90],
+  "faces_vertices": [[0, 1, 2], [0, 2, 3]]
+}
