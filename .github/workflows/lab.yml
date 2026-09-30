@@ -1,0 +1,53 @@
+name: Origami Lab app
+
+on:
+  push:
+    branches:
+      - "origami-lab/v0.2-editor-shell"
+  pull_request:
+    paths:
+      - "apps/lab/**"
+      - "packages/core/**"
+      - "js/origamiLabLegacyBridge.js"
+      - ".github/workflows/lab.yml"
+
+jobs:
+  lab-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/lab
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Typecheck and build
+        run: npm run check
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run editor smoke test
+        env:
+          ORIGAMI_LAB_URL: http://127.0.0.1:5173/apps/lab/
+        run: |
+          npx vite --config vite.config.ts --host 127.0.0.1 > /tmp/origami-lab-vite.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          for i in {1..50}; do
+            if curl --fail --silent http://127.0.0.1:5173/apps/lab/ >/dev/null; then break; fi
+            sleep 0.2
+          done
+          npm run test:smoke
+      - name: Upload editor smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: origami-lab-editor-smoke
+          path: |
+            apps/lab/artifacts/origami-lab-editor.png
+            apps/lab/artifacts/origami-lab-smoke.json
+          if-no-files-found: ignore
