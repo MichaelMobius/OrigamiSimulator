@@ -268,8 +268,8 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function required<T extends HTMLElement>(id: string): T {
+function required<T extends Element>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing #${id}`);
-  return element as T;
+  return element as unknown as T;
 }
