@@ -37,8 +37,19 @@ bridge.release();
 
 The adapter restores the legacy animation state via `release()` after each `simulate()` call.
 
-## Regression strategy
+## Numerical baseline
 
-`packages/core/test/fixtures/single-hinge.fold.json` is the first canonical fixture. Current CI verifies normalization, adapter iteration behavior, defensive cloning, output capture, and animation-state restoration.
+`packages/core/test/fixtures/single-hinge.fold.json` is the first canonical fixture. CI runs it in real headless Chromium using WebGL 1 through ANGLE/SwiftShader, twice, with requestAnimationFrame-driven simulation disabled.
 
-The next regression layer will run canonical fixtures through a real browser/WebGL context and save numerical vertex snapshots. Those snapshots must exist before the WebGPU solver is allowed to replace any legacy equation.
+The first locked baseline is stored at:
+
+`packages/core/test/baselines/legacy-webgl-single-hinge.json`
+
+Parameters:
+
+- Euler integration;
+- fold percent `0.5`;
+- `200` explicit solver steps;
+- legacy residual measured in percent.
+
+The source run produced a residual of `0.0021214 %` and exact repeatability (`maxVertexDelta = 0`, `residualDelta = 0`). CI now checks both repeatability and drift from the versioned baseline. A future WebGPU backend must be compared against these canonical snapshots before it can replace legacy equations.

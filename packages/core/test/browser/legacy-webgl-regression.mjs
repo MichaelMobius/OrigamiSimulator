@@ -7,6 +7,12 @@ const baseUrl = process.env.ORIGAMI_BASE_URL ?? "http://127.0.0.1:4173";
 const fixture = JSON.parse(
   fs.readFileSync(new URL("../fixtures/single-hinge.fold.json", import.meta.url), "utf8"),
 );
+const baseline = JSON.parse(
+  fs.readFileSync(
+    new URL("../baselines/legacy-webgl-single-hinge.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 const browser = await chromium.launch({
   headless: true,
@@ -71,39 +77,45 @@ try {
     };
   }, fixture);
 
-  assert.equal(result.first.verticesCoords.length, 4);
-  assert.equal(result.second.verticesCoords.length, 4);
+  assert.equal(result.first.verticesCoords.length, baseline.snapshot.verticesCoords.length);
+  assert.equal(result.second.verticesCoords.length, baseline.snapshot.verticesCoords.length);
   assert.equal(typeof result.first.residual, "number");
   assert.equal(Number.isFinite(result.first.residual), true);
 
-  let maxRepeatDelta = 0;
-  for (let i = 0; i < result.first.verticesCoords.length; i += 1) {
-    for (let axis = 0; axis < 3; axis += 1) {
-      const delta = Math.abs(
-        result.first.verticesCoords[i][axis] - result.second.verticesCoords[i][axis],
-      );
-      maxRepeatDelta = Math.max(maxRepeatDelta, delta);
-    }
-  }
+  const maxRepeatDelta = maxVertexDelta(result.first.verticesCoords, result.second.verticesCoords);
+  const residualRepeatDelta = Math.abs(result.first.residual - result.second.residual);
   assert.ok(maxRepeatDelta <= 1e-6, `legacy WebGL run is not repeatable: ${maxRepeatDelta}`);
   assert.ok(
-    Math.abs(result.first.residual - result.second.residual) <= 1e-7,
-    "legacy residual changed between identical runs",
+    residualRepeatDelta <= 1e-7,
+    `legacy residual changed between identical runs: ${residualRepeatDelta}`,
+  );
+
+  const maxBaselineVertexDelta = maxVertexDelta(
+    result.first.verticesCoords,
+    baseline.snapshot.verticesCoords,
+  );
+  const baselineResidualDelta = Math.abs(result.first.residual - baseline.snapshot.residual);
+  assert.ok(
+    maxBaselineVertexDelta <= baseline.tolerances.vertexAbsolute,
+    `legacy vertex baseline drifted: ${maxBaselineVertexDelta}`,
+  );
+  assert.ok(
+    baselineResidualDelta <= baseline.tolerances.residualAbsolute,
+    `legacy residual baseline drifted: ${baselineResidualDelta}`,
   );
 
   const output = {
     schemaVersion: 1,
     fixture: "single-hinge",
-    parameters: {
-      integrationType: "euler",
-      foldPercent: 0.5,
-      steps: 200,
-      residualUnit: "percent",
-    },
+    parameters: baseline.parameters,
     snapshot: result.first,
     repeatability: {
       maxVertexDelta: maxRepeatDelta,
-      residualDelta: Math.abs(result.first.residual - result.second.residual),
+      residualDelta: residualRepeatDelta,
+    },
+    baselineDeviation: {
+      maxVertexDelta: maxBaselineVertexDelta,
+      residualDelta: baselineResidualDelta,
     },
     environment: {
       gpu: result.gpu,
@@ -122,4 +134,16 @@ try {
   console.log(JSON.stringify(output, null, 2));
 } finally {
   await browser.close();
+}
+
+function maxVertexDelta(left, right) {
+  assert.equal(left.length, right.length);
+  let maxDelta = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    assert.equal(left[i].length, right[i].length);
+    for (let axis = 0; axis < left[i].length; axis += 1) {
+      maxDelta = Math.max(maxDelta, Math.abs(left[i][axis] - right[i][axis]));
+    }
+  }
+  return maxDelta;
 }
