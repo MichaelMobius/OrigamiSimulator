@@ -1,7 +1,7 @@
 import type { EdgeAssignment, NormalizedFoldGraph } from "../../../packages/core/src/index";
 
 const COLORS: Record<EdgeAssignment, string> = {
-  B: "#d8d8d8",
+  B: "#8f8e88",
   M: "#ff4d63",
   V: "#4b7dff",
   F: "#f2c94c",
@@ -51,7 +51,7 @@ export class PatternView {
       `${bounds.minX - padding} ${bounds.minY - padding} ${bounds.width + 2 * padding} ${bounds.height + 2 * padding}`,
     );
 
-    const baseWidth = span * 0.008;
+    const vertexRadius = span * 0.0128;
     edges.forEach((edge, index) => {
       const a = points[edge[0]];
       const b = points[edge[1]];
@@ -62,7 +62,9 @@ export class PatternView {
       line.setAttribute("x2", String(b[0]));
       line.setAttribute("y2", String(b[1]));
       line.setAttribute("stroke", COLORS[graph.edges_assignment[index] ?? "U"]);
-      line.setAttribute("stroke-width", String(index === this.selected ? baseWidth * 3.5 : baseWidth * 1.7));
+      // non-scaling-stroke keeps these values in screen-space, so use an
+      // explicit readable width instead of a model-coordinate-derived width.
+      line.setAttribute("stroke-width", index === this.selected ? "5" : "2");
       line.setAttribute("stroke-linecap", "round");
       line.setAttribute("vector-effect", "non-scaling-stroke");
       line.classList.add("pattern-edge");
@@ -78,9 +80,8 @@ export class PatternView {
       const point = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       point.setAttribute("cx", String(x));
       point.setAttribute("cy", String(y));
-      point.setAttribute("r", String(baseWidth * 1.6));
+      point.setAttribute("r", String(vertexRadius));
       point.setAttribute("fill", "#111111");
-      point.setAttribute("vector-effect", "non-scaling-stroke");
       point.classList.add("pattern-vertex");
       svg.append(point);
     });

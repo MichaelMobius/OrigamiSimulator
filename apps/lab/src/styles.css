@@ -99,7 +99,7 @@ h1 { margin: 5px 0 0; font-size: 17px; line-height: 1; letter-spacing: -0.035em;
 .legend { height: 45px; display: flex; align-items: center; gap: 13px; padding: 0 16px; border-top: 1px solid var(--line); font: 500 9px/1 DM Mono, monospace; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .swatch { width: 16px; height: 2px; display: inline-block; background: #aaa; }
-.swatch.mountain { background: #ff4d63; }.swatch.valley { background: #4b7dff; }.swatch.flat { background: #f2c94c; }.swatch.boundary { background: #a7a6a0; }
+.swatch.mountain { background: #ff4d63; }.swatch.valley { background: #4b7dff; }.swatch.flat { background: #f2c94c; }.swatch.boundary { background: #8f8e88; }
 
 .three-stage { flex: 1; min-height: 0; background: radial-gradient(circle at 50% 45%, #ffffff 0%, #efeee9 73%); cursor: grab; }
 .three-stage:active { cursor: grabbing; }
@@ -127,8 +127,9 @@ input[type='range'] { width: 100%; accent-color: var(--ink); }
 .field { display: grid; gap: 6px; margin: 11px 0; font-size: 10px; color: var(--muted); }
 select, input[type='number'] { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 6px; background: white; padding: 0 9px; color: var(--ink); outline: none; }
 select:focus, input[type='number']:focus { border-color: #8c8a82; }
-.number-with-unit { display: grid; grid-template-columns: 1fr 30px; align-items: center; }
-.number-with-unit span { margin-left: -30px; text-align: center; pointer-events: none; color: var(--muted); font-size: 11px; }
+.number-with-unit { position: relative; display: block; }
+.number-with-unit input { padding-right: 30px; }
+.number-with-unit span { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--muted); font-size: 11px; }
 
 .badge { font: 500 9px/1 DM Mono, monospace; padding: 5px 7px; border-radius: 999px; background: #e5e3dc; color: var(--muted); }
 .badge.good { background: #dcefe4; color: #227d4c; }.badge.warn { background: #f6e7c4; color: #946719; }.badge.bad { background: #f4d8d8; color: #a93131; }
