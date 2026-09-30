@@ -66,8 +66,6 @@ export class PatternView {
       `${bounds.minX - padding} ${bounds.minY - padding} ${bounds.width + 2 * padding} ${bounds.height + 2 * padding}`,
     );
 
-    // Keep the visible vertex compact. A separate invisible hit target preserves
-    // easy mouse/touch selection without inflating the focused SVG element's bounds.
     const vertexRadius = span * 0.0085;
     const vertexHitRadius = span * 0.026;
 
@@ -110,11 +108,13 @@ export class PatternView {
         this.options.onSelectVertex(index);
       };
 
+      // Interaction geometry must never paint. `pointer-events=all` keeps the
+      // generous hit area active even though fill/stroke are both none.
       const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       hit.setAttribute("cx", String(x));
       hit.setAttribute("cy", String(y));
       hit.setAttribute("r", String(vertexHitRadius));
-      hit.setAttribute("fill", "transparent");
+      hit.setAttribute("fill", "none");
       hit.setAttribute("stroke", "none");
       hit.setAttribute("pointer-events", "all");
       hit.classList.add("pattern-vertex-hit");

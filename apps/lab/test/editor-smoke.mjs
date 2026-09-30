@@ -50,8 +50,11 @@ try {
   assert.equal(await page.locator(".pattern-vertex-hit").count(), 4);
   assert.equal(await page.locator("#three-stage canvas").count(), 1);
   assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
+  assert.equal(await page.locator(".pattern-vertex-hit").first().getAttribute("fill"), "none");
 
   await page.locator(".pattern-edge").nth(4).click();
+  const selectedEdgeFilter = await page.locator(".pattern-edge.selected").evaluate((element) => getComputedStyle(element).filter);
+  assert.equal(selectedEdgeFilter, "none", `selected edge unexpectedly has filter: ${selectedEdgeFilter}`);
   assert.equal(await page.locator("#delete-edge-button").isEnabled(), true);
   await page.locator("#delete-edge-button").click();
   assert.equal(await page.locator(".pattern-edge").count(), 4);
@@ -61,8 +64,10 @@ try {
   await page.locator(".pattern-vertex").nth(0).click();
   const pendingRadius = Number(await page.locator(".pattern-vertex.pending").getAttribute("r"));
   const pendingStroke = Number(await page.locator(".pattern-vertex.pending").getAttribute("stroke-width"));
+  const pendingFilter = await page.locator(".pattern-vertex.pending").evaluate((element) => getComputedStyle(element).filter);
   assert.ok(pendingRadius < 0.02, `pending vertex radius is too large: ${pendingRadius}`);
   assert.ok(pendingStroke <= 2, `pending vertex stroke is too large: ${pendingStroke}`);
+  assert.equal(pendingFilter, "none", `pending vertex unexpectedly has filter: ${pendingFilter}`);
   await page.locator(".pattern-vertex").nth(2).click();
   assert.equal(await page.locator(".pattern-edge").count(), 5);
   assert.match(await page.locator("#model-stats").innerText(), /Faces\s+2/);
@@ -82,10 +87,6 @@ try {
   await page.locator("#edge-assignment").selectOption("V");
   assert.equal(await page.locator("#edge-angle").inputValue(), "90");
 
-  // In crease mode, clicking an edge inserts a vertex exactly on that edge.
-  // A horizontal SVG line has a zero-height geometry bbox, so dispatch the real
-  // browser click using the line's transformed midpoint instead of Playwright's
-  // actionability heuristic.
   await page.locator("#crease-tool").click();
   await page.locator(".pattern-edge").nth(0).evaluate((line) => {
     const svg = line.ownerSVGElement;
@@ -139,6 +140,7 @@ try {
       metric,
       patternEdges: 5,
       compactVertexSelection: true,
+      svgSelectionFiltersDisabled: true,
       edgeVertexInsertion: true,
       geometryEditing: true,
       undoRedo: true,
@@ -148,7 +150,7 @@ try {
       badResponses,
     }, null, 2)}\n`,
   );
-  console.log(`Origami Lab v0.4 smoke test passed at ${baseUrl}: ${metric}`);
+  console.log(`Origami Lab v0.4.1 smoke test passed at ${baseUrl}: ${metric}`);
 } finally {
   await browser.close();
 }
