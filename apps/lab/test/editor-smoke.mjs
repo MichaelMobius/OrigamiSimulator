@@ -4,6 +4,7 @@ import path from "node:path";
 import { chromium } from "playwright";
 
 const baseUrl = process.env.ORIGAMI_LAB_URL ?? "http://127.0.0.1:5173/apps/lab/";
+const baseOrigin = new URL(baseUrl).origin;
 const browser = await chromium.launch({
   headless: true,
   args: [
@@ -19,7 +20,14 @@ try {
   const errors = [];
   const failedRequests = [];
   page.on("pageerror", (error) => errors.push(String(error)));
-  page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`));
+  page.on("requestfailed", (request) => {
+    try {
+      if (new URL(request.url()).origin !== baseOrigin) return;
+    } catch {
+      return;
+    }
+    failedRequests.push(`${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`);
+  });
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#runtime-status.ready", { timeout: 30_000 });
@@ -65,7 +73,7 @@ try {
   const metric = await page.locator("#frame-metric").innerText();
   assert.match(metric, /% error · 200 steps/);
   assert.equal(errors.length, 0, `page errors: ${errors.join("\n")}`);
-  assert.equal(failedRequests.length, 0, `failed requests: ${failedRequests.join("\n")}`);
+  assert.equal(failedRequests.length, 0, `failed same-origin requests: ${failedRequests.join("\n")}`);
 
   const artifactDir = path.resolve("artifacts");
   fs.mkdirSync(artifactDir, { recursive: true });

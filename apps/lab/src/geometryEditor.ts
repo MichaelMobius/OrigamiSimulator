@@ -2,9 +2,11 @@ import {
   faceSignedArea,
   isSimpleFace,
   isValidFaceDiagonal,
-  type EdgeAssignment,
-  type NormalizedFoldGraph,
-} from "../../../packages/core/src/index";
+} from "../../../packages/core/src/geometry/planar.ts";
+import type {
+  EdgeAssignment,
+  NormalizedFoldGraph,
+} from "../../../packages/core/src/fold/types.ts";
 
 const DERIVED_TOPOLOGY_KEYS = [
   "edges_faces",
