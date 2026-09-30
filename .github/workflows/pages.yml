@@ -40,13 +40,33 @@ jobs:
           rsync -a \
             --exclude '.git' \
             --exclude '.github' \
+            --exclude 'CNAME' \
             --exclude 'dist' \
             --exclude 'site' \
+            --exclude 'pages-test' \
             --exclude 'apps/lab/node_modules' \
             --exclude 'apps/lab/artifacts' \
             ./ site/
           cp -a dist/lab/. site/
+          rm -f site/CNAME
           touch site/.nojekyll
+      - name: Install Chromium for production-path smoke
+        working-directory: apps/lab
+        run: npx playwright install --with-deps chromium
+      - name: Smoke test assembled site at project Pages path
+        run: |
+          rm -rf pages-test
+          mkdir -p pages-test/OrigamiSimulator
+          cp -a site/. pages-test/OrigamiSimulator/
+          python3 -m http.server 4173 --directory pages-test > /tmp/origami-pages-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          for i in {1..50}; do
+            if curl --fail --silent http://127.0.0.1:4173/OrigamiSimulator/apps/lab/ >/dev/null; then break; fi
+            sleep 0.2
+          done
+          cd apps/lab
+          ORIGAMI_LAB_URL=http://127.0.0.1:4173/OrigamiSimulator/apps/lab/ npm run test:smoke
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact

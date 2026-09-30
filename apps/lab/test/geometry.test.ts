@@ -55,3 +55,29 @@ test("history restores geometry in both directions", () => {
   const redone = history.redo(undone!.graph);
   assert.equal(redone?.graph.edges_vertices.length, 4);
 });
+
+test("concave diagonals that leave the face are rejected", () => {
+  const graph = {
+    vertices_coords: [[0, 0], [3, 0], [3, 3], [1.5, 1], [0, 3]],
+    edges_vertices: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 0]],
+    edges_assignment: ["B", "B", "B", "B", "B"],
+    edges_foldAngle: [0, 0, 0, 0, 0],
+    faces_vertices: [[0, 1, 2, 3, 4]],
+  };
+  assert.throws(
+    () => addCreaseBetweenVertices(graph, 2, 4),
+    (error) => error instanceof GeometryEditError && error.code === "crease-outside-face",
+  );
+});
+
+test("topology edits remove stale faceOrders and edgeOrders", () => {
+  const graph = {
+    ...fixture(),
+    faceOrders: [[0, 1, 1]],
+    edgeOrders: [[0, 4, 1]],
+  };
+  const result = deleteInternalCrease(graph, 4);
+  assert.equal(result.droppedOrderMetadata, true);
+  assert.equal(result.graph.faceOrders, undefined);
+  assert.equal(result.graph.edgeOrders, undefined);
+});

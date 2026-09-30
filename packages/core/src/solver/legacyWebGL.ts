@@ -47,6 +47,7 @@ export class LegacyWebGLSolverAdapter implements OrigamiSolver {
 
   private readonly defaultIterations: number;
   private readonly chunkSize: number;
+  private active = false;
 
   constructor(
     private readonly runtime: LegacyWebGLRuntimeBridge,
@@ -57,23 +58,31 @@ export class LegacyWebGLSolverAdapter implements OrigamiSolver {
   }
 
   async simulate(request: SimulationRequest): Promise<SimulationFrame> {
+    if (this.active) throw new Error("Legacy solver is already running a simulation.");
+    this.active = true;
+
     const foldPercent = finiteNumber(request.foldPercent, "foldPercent");
+    if (foldPercent < -1 || foldPercent > 1) {
+      this.active = false;
+      throw new RangeError("foldPercent must be between -1 and 1.");
+    }
     const maxIterations = nonNegativeInteger(request.maxIterations, this.defaultIterations);
     const tolerance = optionalNonNegativeFinite(request.tolerance, "tolerance");
+    const expectedVertices = request.graph.vertices_coords?.length ?? 0;
 
     try {
       await this.runtime.loadFold(request.graph);
       await this.runtime.setFoldPercent(foldPercent);
 
       let iteration = 0;
-      let snapshot = await this.runtime.snapshot();
+      let snapshot = validateSnapshot(await this.runtime.snapshot(), expectedVertices);
       let converged = tolerance !== undefined && isAtTolerance(snapshot.residual, tolerance);
 
       while (iteration < maxIterations && !converged) {
         const steps = Math.min(this.chunkSize, maxIterations - iteration);
         await this.runtime.step(steps);
         iteration += steps;
-        snapshot = await this.runtime.snapshot();
+        snapshot = validateSnapshot(await this.runtime.snapshot(), expectedVertices);
         converged = tolerance !== undefined && isAtTolerance(snapshot.residual, tolerance);
       }
 
@@ -86,13 +95,34 @@ export class LegacyWebGLSolverAdapter implements OrigamiSolver {
       if (tolerance !== undefined) frame.converged = converged;
       return frame;
     } finally {
-      await this.runtime.release?.();
+      try {
+        await this.runtime.release?.();
+      } finally {
+        this.active = false;
+      }
     }
   }
 
   async dispose(): Promise<void> {
     await this.runtime.dispose?.();
   }
+}
+
+function validateSnapshot(snapshot: LegacyWebGLSnapshot, expectedVertices: number): LegacyWebGLSnapshot {
+  if (snapshot.verticesCoords.length !== expectedVertices) {
+    throw new Error(
+      `Legacy solver returned ${snapshot.verticesCoords.length} vertices; expected ${expectedVertices}.`,
+    );
+  }
+  snapshot.verticesCoords.forEach((vertex, index) => {
+    if (vertex.length < 3 || !vertex.every(Number.isFinite)) {
+      throw new Error(`Legacy solver returned invalid coordinates for vertex ${index}.`);
+    }
+  });
+  if (snapshot.residual !== undefined && !Number.isFinite(snapshot.residual)) {
+    throw new Error("Legacy solver returned a non-finite residual.");
+  }
+  return snapshot;
 }
 
 function positiveInteger(value: number | undefined, fallback: number): number {

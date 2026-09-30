@@ -2,6 +2,7 @@
     "use strict";
 
     var resumeAfterRun = false;
+    var isHeadless = /(?:\?|&)model=__origami_lab_headless__(?:&|$)/.test(root.location.search);
 
     function requireGlobals() {
         var g = root.globals;
@@ -25,15 +26,11 @@
 
     function loadFold(fold) {
         var g = requireGlobals();
-        resumeAfterRun = !!g.simulationRunning;
+        resumeAfterRun = !isHeadless && !!g.simulationRunning;
 
-        // processFold mutates/triangulates the FOLD graph, so never hand the
-        // caller's graph directly to the legacy pipeline.
         var graph = cloneFold(fold);
         g.foldUseAngles = true;
 
-        // returnCreaseParams=true suppresses upload analytics and lets this
-        // bridge explicitly build/sync the model in a deterministic order.
         var creaseParams = g.pattern.setFoldData(graph, false, true);
         if (!Array.isArray(creaseParams)) {
             throw new Error("Legacy FOLD preprocessing did not produce crease parameters.");
@@ -46,7 +43,9 @@
     }
 
     function setFoldPercent(percent) {
-        if (!Number.isFinite(percent)) throw new RangeError("foldPercent must be finite.");
+        if (!Number.isFinite(percent) || percent < -1 || percent > 1) {
+            throw new RangeError("foldPercent must be finite and between -1 and 1.");
+        }
         var g = requireGlobals();
         g.setCreasePercent(percent);
         g.shouldChangeCreasePercent = true;
@@ -65,11 +64,13 @@
         var positions = g.model.getPositionsArray();
         var verticesCoords = [];
         for (var i = 0; i < positions.length; i += 3) {
-            verticesCoords.push([
-                Number(positions[i]),
-                Number(positions[i + 1]),
-                Number(positions[i + 2])
-            ]);
+            var x = Number(positions[i]);
+            var y = Number(positions[i + 1]);
+            var z = Number(positions[i + 2]);
+            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+                throw new Error("Legacy solver produced non-finite vertex coordinates.");
+            }
+            verticesCoords.push([x, y, z]);
         }
 
         var result = {verticesCoords: verticesCoords};
@@ -84,7 +85,7 @@
 
     function release() {
         var g = requireGlobals();
-        if (resumeAfterRun) g.model.resume();
+        if (resumeAfterRun && !isHeadless) g.model.resume();
         resumeAfterRun = false;
     }
 

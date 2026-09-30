@@ -27,7 +27,10 @@ export class IframeLegacyRuntime implements LegacyWebGLRuntimeBridge {
   constructor(private readonly iframe: HTMLIFrameElement) {}
 
   ready(): Promise<void> {
-    this.readyPromise ??= this.initialize();
+    this.readyPromise ??= this.initialize().catch((error) => {
+      this.readyPromise = undefined;
+      throw error;
+    });
     return this.readyPromise;
   }
 
@@ -75,10 +78,10 @@ export class IframeLegacyRuntime implements LegacyWebGLRuntimeBridge {
     if (!existing) {
       await new Promise<void>((resolve, reject) => {
         const script = doc.createElement("script");
-        script.src = "/js/origamiLabLegacyBridge.js";
+        script.src = new URL("js/origamiLabLegacyBridge.js", doc.baseURI).href;
         script.dataset.origamiLabBridge = "true";
         script.onload = () => resolve();
-        script.onerror = () => reject(new Error("Unable to load legacy bridge."));
+        script.onerror = () => reject(new Error(`Unable to load legacy bridge from ${script.src}.`));
         doc.head.append(script);
       });
     }

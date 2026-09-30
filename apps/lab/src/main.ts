@@ -1,12 +1,12 @@
 import {
-  defaultFoldAngle,
   LegacyWebGLSolverAdapter,
   normalizeFoldGraph,
-  validateFoldGraph,
+  validateFoldForSimulation,
   type EdgeAssignment,
   type FoldDiagnostic,
   type FoldGraph,
   type NormalizedFoldGraph,
+  type SimulationFrame,
 } from "../../../packages/core/src/index";
 import {
   addCreaseBetweenVertices,
@@ -28,6 +28,11 @@ const EXAMPLE: FoldGraph = {
   edges_foldAngle: [0, 0, 0, 0, 90],
   faces_vertices: [[0, 1, 2], [0, 2, 3]],
 };
+
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+const MAX_VERTICES = 100_000;
+const MAX_EDGES = 200_000;
+const MAX_FACES = 100_000;
 
 type EditorTool = "select" | "crease";
 
@@ -67,6 +72,7 @@ let activeTool: EditorTool = "select";
 let pendingVertex = -1;
 let sourceDiagnostics: FoldDiagnostic[] = [];
 let editorDiagnostics: FoldDiagnostic[] = [];
+let runtimeReady = false;
 
 const history = new GraphHistory();
 const runtime = new IframeLegacyRuntime(elements.legacyIframe);
@@ -107,9 +113,12 @@ void initializeRuntime();
 async function initializeRuntime(): Promise<void> {
   try {
     await runtime.ready();
+    runtimeReady = true;
     elements.runtimeStatus.textContent = "Legacy solver ready";
     elements.runtimeStatus.className = "runtime-status ready";
+    renderDiagnostics();
   } catch (error) {
+    runtimeReady = false;
     elements.runtimeStatus.textContent = "Solver unavailable";
     elements.runtimeStatus.className = "runtime-status error";
     addEditorDiagnostic(error, "runtime");
@@ -117,6 +126,7 @@ async function initializeRuntime(): Promise<void> {
 }
 
 function loadGraph(input: FoldGraph): void {
+  assertComplexity(input);
   const normalized = normalizeFoldGraph(structuredClone(input));
   graph = normalized.graph;
   sourceDiagnostics = normalized.diagnostics;
@@ -183,7 +193,12 @@ function handleVertexSelect(index: number): void {
 
   try {
     const result = addCreaseBetweenVertices(graph, pendingVertex, index, "V", 180);
-    applyGraphEdit(result.graph, "Add crease", result.edgeIndex);
+    applyGraphEdit(
+      result.graph,
+      "Add crease",
+      result.edgeIndex,
+      result.droppedOrderMetadata ? topologyMetadataDiagnostic() : undefined,
+    );
     pendingVertex = -1;
   } catch (error) {
     addEditorDiagnostic(error, geometryCode(error));
@@ -240,15 +255,15 @@ function updateSelectedAssignment(): void {
   const next = structuredClone(graph) as NormalizedFoldGraph;
   const assignment = elements.edgeAssignment.value as EdgeAssignment;
   next.edges_assignment[selectedEdge] = assignment;
+
   const current = next.edges_foldAngle[selectedEdge];
-  const canonical = defaultFoldAngle(assignment);
-  if (
-    current === null || current === undefined ||
-    (assignment === "M" && current >= 0) ||
-    (assignment === "V" && current <= 0) ||
-    !["M", "V"].includes(assignment)
-  ) {
-    next.edges_foldAngle[selectedEdge] = canonical;
+  if (assignment === "M" || assignment === "V") {
+    const magnitude = typeof current === "number" && Number.isFinite(current) && Math.abs(current) > 0
+      ? Math.min(180, Math.abs(current))
+      : 180;
+    next.edges_foldAngle[selectedEdge] = assignment === "M" ? -magnitude : magnitude;
+  } else {
+    next.edges_foldAngle[selectedEdge] = 0;
   }
   applyGraphEdit(next, "Change crease assignment", selectedEdge);
 }
@@ -266,19 +281,29 @@ function deleteSelectedEdge(): void {
   if (selectedEdge < 0) return;
   try {
     const result = deleteInternalCrease(graph, selectedEdge);
-    applyGraphEdit(result.graph, "Delete crease", -1);
+    applyGraphEdit(
+      result.graph,
+      "Delete crease",
+      -1,
+      result.droppedOrderMetadata ? topologyMetadataDiagnostic() : undefined,
+    );
   } catch (error) {
     addEditorDiagnostic(error, geometryCode(error));
   }
 }
 
-function applyGraphEdit(next: NormalizedFoldGraph, label: string, nextSelectedEdge: number): void {
+function applyGraphEdit(
+  next: NormalizedFoldGraph,
+  label: string,
+  nextSelectedEdge: number,
+  diagnostic?: FoldDiagnostic,
+): void {
   history.record(graph, label);
   graph = next;
   selectedEdge = nextSelectedEdge;
   pendingVertex = -1;
   sourceDiagnostics = [];
-  editorDiagnostics = [];
+  editorDiagnostics = diagnostic ? [diagnostic] : [];
   renderGraphState();
 }
 
@@ -312,7 +337,7 @@ function renderHistory(): void {
 }
 
 function handleKeyboardShortcut(event: KeyboardEvent): void {
-  if (!(event.ctrlKey || event.metaKey)) return;
+  if (!(event.ctrlKey || event.metaKey) || isTextEditingTarget(event.target)) return;
   const key = event.key.toLowerCase();
   if (key === "z" && event.shiftKey) {
     event.preventDefault();
@@ -327,7 +352,7 @@ function handleKeyboardShortcut(event: KeyboardEvent): void {
 }
 
 function renderDiagnostics(): void {
-  const validation = validateFoldGraph(graph);
+  const validation = validateFoldForSimulation(graph);
   const diagnostics = [...sourceDiagnostics, ...editorDiagnostics, ...validation.diagnostics];
   elements.diagnostics.replaceChildren();
 
@@ -349,11 +374,11 @@ function renderDiagnostics(): void {
     });
   }
 
-  const errors = validation.errors.length;
-  const warnings = validation.warnings.length + sourceDiagnostics.filter(({ severity }) => severity === "warning").length;
+  const errors = diagnostics.filter(({ severity }) => severity === "error").length;
+  const warnings = diagnostics.filter(({ severity }) => severity === "warning").length;
   elements.validationBadge.className = `badge ${errors > 0 ? "bad" : warnings > 0 ? "warn" : "good"}`;
   elements.validationBadge.textContent = errors > 0 ? `${errors} errors` : warnings > 0 ? `${warnings} warnings` : "valid";
-  elements.simulate.disabled = errors > 0;
+  elements.simulate.disabled = errors > 0 || !runtimeReady;
 }
 
 function renderStats(): void {
@@ -375,6 +400,12 @@ function renderStats(): void {
 }
 
 async function simulate(): Promise<void> {
+  const validation = validateFoldForSimulation(graph);
+  if (!runtimeReady || !validation.valid || sourceDiagnostics.some(({ severity }) => severity === "error")) {
+    renderDiagnostics();
+    return;
+  }
+
   elements.simulate.disabled = true;
   elements.simulate.textContent = "Solving…";
   elements.metric.textContent = "computing";
@@ -384,6 +415,7 @@ async function simulate(): Promise<void> {
       foldPercent: Number(elements.foldPercent.value) / 100,
       maxIterations: 200,
     });
+    assertSimulationFrame(frame, graph.vertices_coords?.length ?? 0);
     scene.setGraph(graph, frame.verticesCoords);
     elements.metric.textContent = frame.residual === undefined
       ? `${frame.iteration} steps`
@@ -392,7 +424,7 @@ async function simulate(): Promise<void> {
     addEditorDiagnostic(error, "runtime");
     elements.metric.textContent = "solver error";
   } finally {
-    elements.simulate.disabled = !validateFoldGraph(graph).valid;
+    renderDiagnostics();
     elements.simulate.textContent = "Run solver";
   }
 }
@@ -405,8 +437,13 @@ async function importFile(): Promise<void> {
   const file = elements.fileInput.files?.[0];
   elements.fileInput.value = "";
   if (!file) return;
+
   try {
+    if (file.size > MAX_IMPORT_BYTES) {
+      throw new Error(`File is too large (${Math.ceil(file.size / 1024 / 1024)} MB). Maximum is 10 MB.`);
+    }
     const parsed = JSON.parse(await file.text()) as FoldGraph;
+    assertComplexity(parsed);
     loadGraph(parsed);
   } catch (error) {
     addEditorDiagnostic(new Error(`Unable to import ${file.name}: ${messageOf(error)}`), "import");
@@ -420,7 +457,42 @@ function exportFold(): void {
   anchor.href = url;
   anchor.download = "origami-lab.fold";
   anchor.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function assertComplexity(input: FoldGraph): void {
+  const vertices = input.vertices_coords?.length ?? 0;
+  const edges = input.edges_vertices?.length ?? 0;
+  const faces = input.faces_vertices?.length ?? 0;
+  if (vertices > MAX_VERTICES || edges > MAX_EDGES || faces > MAX_FACES) {
+    throw new Error(
+      `Model exceeds safety limits (${vertices} vertices, ${edges} edges, ${faces} faces).`,
+    );
+  }
+}
+
+function assertSimulationFrame(frame: SimulationFrame, expectedVertices: number): void {
+  if (frame.verticesCoords.length !== expectedVertices) {
+    throw new Error(
+      `Solver returned ${frame.verticesCoords.length} vertices; expected ${expectedVertices}.`,
+    );
+  }
+  frame.verticesCoords.forEach((vertex, index) => {
+    if (vertex.length < 3 || !vertex.every(Number.isFinite)) {
+      throw new Error(`Solver returned invalid coordinates for vertex ${index}.`);
+    }
+  });
+  if (frame.residual !== undefined && !Number.isFinite(frame.residual)) {
+    throw new Error("Solver returned a non-finite residual.");
+  }
+}
+
+function topologyMetadataDiagnostic(): FoldDiagnostic {
+  return {
+    severity: "warning",
+    code: "topology-order-metadata-dropped",
+    message: "faceOrders/edgeOrders were removed because topology changed and their indices were no longer reliable.",
+  };
 }
 
 function addEditorDiagnostic(error: unknown, code: string): void {
@@ -445,6 +517,11 @@ function isInternalEdge(index: number): boolean {
     const next = face[(faceIndex + 1) % face.length];
     return (vertex === a && next === b) || (vertex === b && next === a);
   })).length === 2;
+}
+
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.matches("input, textarea, select") || target.isContentEditable;
 }
 
 function messageOf(error: unknown): string {

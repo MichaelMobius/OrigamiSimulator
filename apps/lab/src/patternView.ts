@@ -1,4 +1,8 @@
-import type { EdgeAssignment, NormalizedFoldGraph } from "../../../packages/core/src/index";
+import {
+  projectVertices2D,
+  type EdgeAssignment,
+  type NormalizedFoldGraph,
+} from "../../../packages/core/src/index";
 
 const COLORS: Record<EdgeAssignment, string> = {
   B: "#8f8e88",
@@ -53,7 +57,7 @@ export class PatternView {
     if (!graph || vertices.length === 0) return;
 
     svg.dataset.tool = this.tool;
-    const points = vertices.map(projectVertex);
+    const points = projectVertices2D(vertices);
     const bounds = calculateBounds(points);
     const span = Math.max(bounds.width, bounds.height, 1);
     const padding = span * 0.12;
@@ -78,10 +82,20 @@ export class PatternView {
       line.setAttribute("vector-effect", "non-scaling-stroke");
       line.classList.add("pattern-edge");
       line.dataset.index = String(index);
+      line.setAttribute("role", "button");
+      line.setAttribute("tabindex", "0");
+      line.setAttribute("aria-label", `Edge ${index}`);
       if (index === this.selectedEdge) line.classList.add("selected");
-      line.addEventListener("click", (event) => {
+      const select = (event: Event) => {
         event.stopPropagation();
         this.options.onSelectEdge(index);
+      };
+      line.addEventListener("click", select);
+      line.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          select(event);
+        }
       });
       svg.append(line);
     });
@@ -97,10 +111,20 @@ export class PatternView {
       point.setAttribute("vector-effect", "non-scaling-stroke");
       point.classList.add("pattern-vertex");
       point.dataset.index = String(index);
+      point.setAttribute("role", "button");
+      point.setAttribute("tabindex", "0");
+      point.setAttribute("aria-label", `Vertex ${index}`);
       if (index === this.pendingVertex) point.classList.add("pending");
-      point.addEventListener("click", (event) => {
+      const select = (event: Event) => {
         event.stopPropagation();
         this.options.onSelectVertex(index);
+      };
+      point.addEventListener("click", select);
+      point.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          select(event);
+        }
       });
       svg.append(point);
     });
@@ -111,11 +135,7 @@ export function assignmentColor(assignment: EdgeAssignment): string {
   return COLORS[assignment];
 }
 
-function projectVertex(vertex: readonly number[]): [number, number] {
-  return [vertex[0] ?? 0, vertex.length >= 3 ? vertex[2] ?? 0 : vertex[1] ?? 0];
-}
-
-function calculateBounds(points: Array<[number, number]>) {
+function calculateBounds(points: ReadonlyArray<readonly [number, number]>) {
   const xs = points.map(([x]) => x);
   const ys = points.map(([, y]) => y);
   const minX = Math.min(...xs);
