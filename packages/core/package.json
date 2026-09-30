@@ -7,9 +7,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test test/*.test.mjs",
+    "test:browser": "node test/browser/legacy-webgl-regression.mjs",
     "check": "npm run test"
   },
   "devDependencies": {
+    "playwright": "1.63.0",
     "typescript": "^5.8.3"
   }
 }
