@@ -36,7 +36,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .brand span:last-child { font-size: 10px; color: var(--muted); letter-spacing: 0.04em; }
 .top-actions { display: flex; gap: 8px; align-items: center; }
 
-.button, .icon-button {
+.button, .icon-button, .tool-button {
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink);
@@ -45,10 +45,15 @@ button, a { -webkit-tap-highlight-color: transparent; }
   transition: 120ms ease;
 }
 .button { min-height: 34px; padding: 0 13px; font-size: 12px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
-.button:hover:not(:disabled), .icon-button:hover { transform: translateY(-1px); border-color: #aaa89f; }
+.button:hover:not(:disabled), .icon-button:hover:not(:disabled), .tool-button:hover:not(:disabled) { transform: translateY(-1px); border-color: #aaa89f; }
 .button.primary { background: var(--ink); border-color: var(--ink); color: white; min-width: 108px; }
-.button:disabled { opacity: 0.45; cursor: not-allowed; }
+.button.danger { color: #a93131; border-color: #e6caca; background: #fff8f8; }
+.button.wide { width: 100%; margin-top: 8px; }
+.button:disabled, .icon-button:disabled, .tool-button:disabled { opacity: 0.42; cursor: not-allowed; transform: none; }
 .icon-button { width: 34px; height: 34px; font-size: 18px; }
+.header-tools { display: flex; align-items: center; gap: 6px; }
+.tool-button { min-height: 30px; padding: 0 10px; font-size: 10px; font-weight: 600; }
+.tool-button.active { background: var(--ink); color: white; border-color: var(--ink); }
 
 .runtime-status {
   font: 500 10px/1 DM Mono, monospace;
@@ -74,6 +79,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 15px 18px;
   border-bottom: 1px solid var(--line);
 }
@@ -90,12 +96,29 @@ h1 { margin: 5px 0 0; font-size: 17px; line-height: 1; letter-spacing: -0.035em;
   background-size: 16px 16px;
 }
 #pattern-svg { width: 100%; height: 100%; overflow: visible; }
+#pattern-svg[data-tool='crease'] { cursor: crosshair; }
 .pattern-edge { cursor: pointer; transition: opacity 120ms ease; }
 .pattern-edge:hover { opacity: 0.62; }
 .pattern-edge.selected { filter: drop-shadow(0 0 3px rgba(0,0,0,.28)); }
-.pattern-vertex { pointer-events: none; }
+.pattern-vertex { cursor: crosshair; transition: r 100ms ease, fill 100ms ease; }
+.pattern-vertex:hover { fill: var(--accent); }
+.pattern-vertex.pending { filter: drop-shadow(0 0 4px rgba(255,89,61,.65)); }
 .empty-state { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
 .empty-state[hidden] { display: none; }
+.tool-hint {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid rgba(215,213,205,.9);
+  border-radius: 7px;
+  background: rgba(248,247,242,.88);
+  backdrop-filter: blur(8px);
+  color: var(--muted);
+  font: 500 9px/1.35 DM Mono, monospace;
+  pointer-events: none;
+}
 .legend { height: 45px; display: flex; align-items: center; gap: 13px; padding: 0 16px; border-top: 1px solid var(--line); font: 500 9px/1 DM Mono, monospace; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .swatch { width: 16px; height: 2px; display: inline-block; background: #aaa; }
@@ -153,14 +176,17 @@ select:focus, input[type='number']:focus { border-color: #8c8a82; }
   pointer-events: none;
 }
 
+@media (max-width: 1160px) {
+  .top-actions .button { padding-inline: 9px; font-size: 10px; }
+}
 @media (max-width: 1050px) {
   .workspace { grid-template-columns: 1fr 1.15fr 250px; }
-  .brand span:last-child, .top-actions .ghost:first-of-type { display: none; }
+  .brand span:last-child, .top-actions a.ghost { display: none; }
 }
 @media (max-width: 820px) {
   html, body, #app { overflow: auto; height: auto; min-height: 100%; }
   .topbar { position: sticky; top: 0; z-index: 10; }
-  .runtime-status, .brand div span { display: none; }
+  .runtime-status, .brand div span, .top-actions .button:nth-of-type(-n+2) { display: none; }
   .workspace { height: auto; grid-template-columns: 1fr; }
   .pane { min-height: 560px; border-right: 0; border-bottom: 1px solid var(--line); }
   .inspector { min-height: 420px; }

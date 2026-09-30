@@ -13,23 +13,33 @@ const COLORS: Record<EdgeAssignment, string> = {
 export interface PatternViewOptions {
   svg: SVGSVGElement;
   empty: HTMLElement;
-  onSelect(index: number): void;
+  onSelectEdge(index: number): void;
+  onSelectVertex(index: number): void;
 }
 
 export class PatternView {
   private graph: NormalizedFoldGraph | undefined;
-  private selected = -1;
+  private selectedEdge = -1;
+  private pendingVertex = -1;
+  private tool: "select" | "crease" = "select";
 
   constructor(private readonly options: PatternViewOptions) {}
 
   setGraph(graph: NormalizedFoldGraph): void {
     this.graph = graph;
-    if (this.selected >= graph.edges_vertices.length) this.selected = -1;
+    if (this.selectedEdge >= graph.edges_vertices.length) this.selectedEdge = -1;
+    if (this.pendingVertex >= (graph.vertices_coords?.length ?? 0)) this.pendingVertex = -1;
     this.render();
   }
 
-  select(index: number): void {
-    this.selected = index;
+  selectEdge(index: number): void {
+    this.selectedEdge = index;
+    this.render();
+  }
+
+  setInteraction(tool: "select" | "crease", pendingVertex: number): void {
+    this.tool = tool;
+    this.pendingVertex = pendingVertex;
     this.render();
   }
 
@@ -42,6 +52,7 @@ export class PatternView {
     empty.hidden = vertices.length > 0;
     if (!graph || vertices.length === 0) return;
 
+    svg.dataset.tool = this.tool;
     const points = vertices.map(projectVertex);
     const bounds = calculateBounds(points);
     const span = Math.max(bounds.width, bounds.height, 1);
@@ -62,27 +73,35 @@ export class PatternView {
       line.setAttribute("x2", String(b[0]));
       line.setAttribute("y2", String(b[1]));
       line.setAttribute("stroke", COLORS[graph.edges_assignment[index] ?? "U"]);
-      // non-scaling-stroke keeps these values in screen-space, so use an
-      // explicit readable width instead of a model-coordinate-derived width.
-      line.setAttribute("stroke-width", index === this.selected ? "5" : "2");
+      line.setAttribute("stroke-width", index === this.selectedEdge ? "5" : "2");
       line.setAttribute("stroke-linecap", "round");
       line.setAttribute("vector-effect", "non-scaling-stroke");
       line.classList.add("pattern-edge");
-      if (index === this.selected) line.classList.add("selected");
+      line.dataset.index = String(index);
+      if (index === this.selectedEdge) line.classList.add("selected");
       line.addEventListener("click", (event) => {
         event.stopPropagation();
-        this.options.onSelect(index);
+        this.options.onSelectEdge(index);
       });
       svg.append(line);
     });
 
-    points.forEach(([x, y]) => {
+    points.forEach(([x, y], index) => {
       const point = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       point.setAttribute("cx", String(x));
       point.setAttribute("cy", String(y));
       point.setAttribute("r", String(vertexRadius));
-      point.setAttribute("fill", "#111111");
+      point.setAttribute("fill", index === this.pendingVertex ? "#ff593d" : "#111111");
+      point.setAttribute("stroke", "transparent");
+      point.setAttribute("stroke-width", "12");
+      point.setAttribute("vector-effect", "non-scaling-stroke");
       point.classList.add("pattern-vertex");
+      point.dataset.index = String(index);
+      if (index === this.pendingVertex) point.classList.add("pending");
+      point.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.options.onSelectVertex(index);
+      });
       svg.append(point);
     });
   }

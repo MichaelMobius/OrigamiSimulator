@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#111111" />
     <title>Origami Lab</title>
-    <link rel="stylesheet" href="/apps/lab/src/styles.css" />
+    <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
     <div id="app">
@@ -19,7 +19,9 @@
         </div>
         <div class="top-actions">
           <span id="runtime-status" class="runtime-status pending">Starting legacy solver…</span>
-          <a class="button ghost" href="/index.html" target="_blank" rel="noreferrer">Original simulator</a>
+          <button id="undo-button" class="button ghost" type="button" disabled>Undo</button>
+          <button id="redo-button" class="button ghost" type="button" disabled>Redo</button>
+          <a class="button ghost" href="../../index.html" target="_blank" rel="noreferrer">Original simulator</a>
           <button id="import-button" class="button ghost" type="button">Import FOLD</button>
           <button id="export-button" class="button ghost" type="button">Export FOLD</button>
           <input id="file-input" type="file" accept=".fold,.json,application/json" hidden />
@@ -33,11 +35,16 @@
               <span class="eyebrow">01 · CREASE PATTERN</span>
               <h1>Pattern editor</h1>
             </div>
-            <button id="reset-example" class="icon-button" type="button" title="Reset example">↺</button>
+            <div class="header-tools">
+              <button id="select-tool" class="tool-button active" type="button" aria-pressed="true">Select</button>
+              <button id="crease-tool" class="tool-button" type="button" aria-pressed="false">+ Crease</button>
+              <button id="reset-example" class="icon-button" type="button" title="Reset example">↺</button>
+            </div>
           </div>
           <div id="pattern-stage" class="pattern-stage">
             <svg id="pattern-svg" role="img" aria-label="Origami crease pattern"></svg>
             <div id="pattern-empty" class="empty-state" hidden>No crease pattern loaded.</div>
+            <div id="tool-hint" class="tool-hint">Select an edge to edit its assignment or angle.</div>
           </div>
           <div class="legend" aria-label="Crease legend">
             <span><i class="swatch mountain"></i>Mountain</span>
@@ -85,6 +92,7 @@
                 <span>Target angle</span>
                 <div class="number-with-unit"><input id="edge-angle" type="number" min="-180" max="180" step="1" /><span>°</span></div>
               </label>
+              <button id="delete-edge-button" class="button danger wide" type="button">Delete internal crease</button>
             </div>
           </section>
 
@@ -106,12 +114,12 @@
       <iframe
         id="legacy-runtime"
         class="legacy-runtime"
-        src="/index.html?model=__origami_lab_headless__"
+        src="../../index.html?model=__origami_lab_headless__"
         title="Legacy numerical runtime"
         aria-hidden="true"
         tabindex="-1"
       ></iframe>
     </div>
-    <script type="module" src="/apps/lab/src/main.ts"></script>
+    <script type="module" src="./src/main.ts"></script>
   </body>
 </html>
