@@ -99,10 +99,16 @@ h1 { margin: 5px 0 0; font-size: 17px; line-height: 1; letter-spacing: -0.035em;
 #pattern-svg[data-tool='crease'] { cursor: crosshair; }
 .pattern-edge { cursor: pointer; transition: opacity 120ms ease; }
 .pattern-edge:hover { opacity: 0.62; }
-.pattern-edge.selected { filter: drop-shadow(0 0 3px rgba(0,0,0,.28)); }
+.pattern-edge.selected { opacity: 1; }
 .pattern-vertex { cursor: crosshair; transition: r 100ms ease, fill 100ms ease; }
 .pattern-vertex:hover { fill: var(--accent); }
-.pattern-vertex.pending { filter: drop-shadow(0 0 4px rgba(255,89,61,.65)); }
+.pattern-vertex.pending { opacity: 1; }
+/* SVG CSS filters can explode under a tiny user-space viewBox combined with
+   vector-effect=non-scaling-stroke in Chromium. Selection is expressed only
+   with stroke width/ring, never raster filters. */
+#pattern-svg .pattern-edge,
+#pattern-svg .pattern-vertex,
+#pattern-svg .pattern-vertex-hit { filter: none !important; }
 .empty-state { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
 .empty-state[hidden] { display: none; }
 .tool-hint {
