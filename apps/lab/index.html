@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111111" />
+    <title>Origami Lab</title>
+    <link rel="stylesheet" href="/apps/lab/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">◇</span>
+          <div>
+            <strong>Origami Lab</strong>
+            <span>computational folding workspace</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span id="runtime-status" class="runtime-status pending">Starting legacy solver…</span>
+          <a class="button ghost" href="/index.html" target="_blank" rel="noreferrer">Original simulator</a>
+          <button id="import-button" class="button ghost" type="button">Import FOLD</button>
+          <button id="export-button" class="button ghost" type="button">Export FOLD</button>
+          <input id="file-input" type="file" accept=".fold,.json,application/json" hidden />
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="pane pattern-pane">
+          <div class="pane-header">
+            <div>
+              <span class="eyebrow">01 · CREASE PATTERN</span>
+              <h1>Pattern editor</h1>
+            </div>
+            <button id="reset-example" class="icon-button" type="button" title="Reset example">↺</button>
+          </div>
+          <div id="pattern-stage" class="pattern-stage">
+            <svg id="pattern-svg" role="img" aria-label="Origami crease pattern"></svg>
+            <div id="pattern-empty" class="empty-state" hidden>No crease pattern loaded.</div>
+          </div>
+          <div class="legend" aria-label="Crease legend">
+            <span><i class="swatch mountain"></i>Mountain</span>
+            <span><i class="swatch valley"></i>Valley</span>
+            <span><i class="swatch flat"></i>Flat</span>
+            <span><i class="swatch boundary"></i>Boundary</span>
+          </div>
+        </section>
+
+        <section class="pane simulation-pane">
+          <div class="pane-header">
+            <div>
+              <span class="eyebrow">02 · SIMULATION</span>
+              <h1>Live 3D</h1>
+            </div>
+            <span id="frame-metric" class="metric">—</span>
+          </div>
+          <div id="three-stage" class="three-stage"></div>
+          <div class="simulation-controls">
+            <label for="fold-percent">Fold <output id="fold-percent-output">50%</output></label>
+            <input id="fold-percent" type="range" min="-100" max="100" step="1" value="50" />
+            <button id="simulate-button" class="button primary" type="button">Run solver</button>
+          </div>
+        </section>
+
+        <aside class="inspector">
+          <section class="inspector-section">
+            <span class="eyebrow">SELECTION</span>
+            <div id="selection-empty" class="muted-block">Select an edge in the pattern.</div>
+            <div id="edge-controls" hidden>
+              <div class="selection-title">Edge <strong id="edge-index">0</strong></div>
+              <label class="field">
+                <span>Assignment</span>
+                <select id="edge-assignment">
+                  <option value="M">Mountain</option>
+                  <option value="V">Valley</option>
+                  <option value="F">Flat / facet</option>
+                  <option value="B">Boundary</option>
+                  <option value="U">Unassigned hinge</option>
+                  <option value="C">Cut</option>
+                  <option value="J">Join</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Target angle</span>
+                <div class="number-with-unit"><input id="edge-angle" type="number" min="-180" max="180" step="1" /><span>°</span></div>
+              </label>
+            </div>
+          </section>
+
+          <section class="inspector-section grow">
+            <div class="section-row">
+              <span class="eyebrow">VALIDATION</span>
+              <span id="validation-badge" class="badge">—</span>
+            </div>
+            <div id="diagnostics" class="diagnostics"></div>
+          </section>
+
+          <section class="inspector-section compact">
+            <span class="eyebrow">MODEL</span>
+            <dl id="model-stats" class="stats"></dl>
+          </section>
+        </aside>
+      </main>
+
+      <iframe
+        id="legacy-runtime"
+        class="legacy-runtime"
+        src="/index.html?model=__origami_lab_headless__"
+        title="Legacy numerical runtime"
+        aria-hidden="true"
+        tabindex="-1"
+      ></iframe>
+    </div>
+    <script type="module" src="/apps/lab/src/main.ts"></script>
+  </body>
+</html>
