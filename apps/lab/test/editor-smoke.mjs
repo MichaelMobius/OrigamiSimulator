@@ -47,6 +47,7 @@ try {
 
   assert.equal(await page.locator(".pattern-edge").count(), 5);
   assert.equal(await page.locator(".pattern-vertex").count(), 4);
+  assert.equal(await page.locator(".pattern-vertex-hit").count(), 4);
   assert.equal(await page.locator("#three-stage canvas").count(), 1);
   assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
 
@@ -58,6 +59,10 @@ try {
 
   await page.locator("#crease-tool").click();
   await page.locator(".pattern-vertex").nth(0).click();
+  const pendingRadius = Number(await page.locator(".pattern-vertex.pending").getAttribute("r"));
+  const pendingStroke = Number(await page.locator(".pattern-vertex.pending").getAttribute("stroke-width"));
+  assert.ok(pendingRadius < 0.02, `pending vertex radius is too large: ${pendingRadius}`);
+  assert.ok(pendingStroke <= 2, `pending vertex stroke is too large: ${pendingStroke}`);
   await page.locator(".pattern-vertex").nth(2).click();
   assert.equal(await page.locator(".pattern-edge").count(), 5);
   assert.match(await page.locator("#model-stats").innerText(), /Faces\s+2/);
@@ -67,6 +72,7 @@ try {
   await page.locator("#redo-button").click();
   assert.equal(await page.locator(".pattern-edge").count(), 5);
 
+  await page.locator("#select-tool").click();
   await page.locator(".pattern-edge").nth(4).click();
   assert.equal(await page.locator("#edge-assignment").inputValue(), "V");
   await page.locator("#edge-angle").fill("90");
@@ -75,6 +81,36 @@ try {
   assert.equal(await page.locator("#edge-angle").inputValue(), "-90");
   await page.locator("#edge-assignment").selectOption("V");
   assert.equal(await page.locator("#edge-angle").inputValue(), "90");
+
+  // In crease mode, clicking an edge inserts a vertex exactly on that edge.
+  // A horizontal SVG line has a zero-height geometry bbox, so dispatch the real
+  // browser click using the line's transformed midpoint instead of Playwright's
+  // actionability heuristic.
+  await page.locator("#crease-tool").click();
+  await page.locator(".pattern-edge").nth(0).evaluate((line) => {
+    const svg = line.ownerSVGElement;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) throw new Error("SVG transform unavailable");
+    const x1 = Number(line.getAttribute("x1"));
+    const y1 = Number(line.getAttribute("y1"));
+    const x2 = Number(line.getAttribute("x2"));
+    const y2 = Number(line.getAttribute("y2"));
+    const midpoint = new DOMPoint((x1 + x2) / 2, (y1 + y2) / 2).matrixTransform(matrix);
+    line.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      clientX: midpoint.x,
+      clientY: midpoint.y,
+    }));
+  });
+  assert.equal(await page.locator(".pattern-vertex").count(), 5);
+  assert.equal(await page.locator(".pattern-edge").count(), 6);
+  assert.match(await page.locator("#model-stats").innerText(), /Vertices\s+5/);
+  assert.equal(await page.locator(".pattern-vertex.pending").count(), 1);
+
+  await page.locator("#undo-button").click();
+  assert.equal(await page.locator(".pattern-vertex").count(), 4);
+  assert.equal(await page.locator(".pattern-edge").count(), 5);
+  await page.locator("#select-tool").click();
 
   await page.locator("#simulate-button").click();
   await page.waitForFunction(
@@ -102,6 +138,8 @@ try {
       baseUrl,
       metric,
       patternEdges: 5,
+      compactVertexSelection: true,
+      edgeVertexInsertion: true,
       geometryEditing: true,
       undoRedo: true,
       assignmentMagnitudePreserved: true,
@@ -110,7 +148,7 @@ try {
       badResponses,
     }, null, 2)}\n`,
   );
-  console.log(`Origami Lab v0.3.1 smoke test passed at ${baseUrl}: ${metric}`);
+  console.log(`Origami Lab v0.4 smoke test passed at ${baseUrl}: ${metric}`);
 } finally {
   await browser.close();
 }

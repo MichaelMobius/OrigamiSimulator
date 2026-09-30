@@ -14,6 +14,7 @@ import {
   GeometryEditError,
   GraphHistory,
 } from "./geometryEditor";
+import { splitEdgeAt } from "./edgeSplit";
 import { IframeLegacyRuntime } from "./legacyRuntime";
 import { PatternView } from "./patternView";
 import { OrigamiScene } from "./scene3d";
@@ -162,12 +163,39 @@ function renderGraphState(): void {
   elements.metric.textContent = "flat preview";
 }
 
-function handleEdgeSelect(index: number): void {
-  if (activeTool === "crease") {
-    pendingVertex = -1;
-    setTool("select");
+function handleEdgeSelect(index: number, parameter: number): void {
+  if (activeTool !== "crease") {
+    selectEdge(index);
+    return;
   }
-  selectEdge(index);
+
+  const firstVertex = pendingVertex;
+  try {
+    const split = splitEdgeAt(graph, index, parameter);
+    if (firstVertex < 0) {
+      applyGraphEdit(
+        split.graph,
+        "Insert vertex",
+        -1,
+        split.droppedOrderMetadata ? topologyMetadataDiagnostic() : undefined,
+        split.vertexIndex,
+      );
+      return;
+    }
+
+    const crease = addCreaseBetweenVertices(split.graph, firstVertex, split.vertexIndex, "V", 180);
+    applyGraphEdit(
+      crease.graph,
+      "Add crease to edge",
+      crease.edgeIndex,
+      split.droppedOrderMetadata || crease.droppedOrderMetadata
+        ? topologyMetadataDiagnostic()
+        : undefined,
+    );
+  } catch (error) {
+    addEditorDiagnostic(error, geometryCode(error));
+    renderToolState();
+  }
 }
 
 function handleVertexSelect(index: number): void {
@@ -231,9 +259,9 @@ function renderToolState(): void {
   if (activeTool === "select") {
     elements.toolHint.textContent = "Select an edge to edit its assignment or angle.";
   } else if (pendingVertex < 0) {
-    elements.toolHint.textContent = "Crease tool · choose the first vertex.";
+    elements.toolHint.textContent = "Crease tool · choose a vertex or click an edge to insert one.";
   } else {
-    elements.toolHint.textContent = `Crease tool · vertex ${pendingVertex} selected; choose a second vertex on the same face.`;
+    elements.toolHint.textContent = `Crease tool · vertex ${pendingVertex} selected; choose a vertex or click an edge.`;
   }
 }
 
@@ -297,11 +325,12 @@ function applyGraphEdit(
   label: string,
   nextSelectedEdge: number,
   diagnostic?: FoldDiagnostic,
+  nextPendingVertex = -1,
 ): void {
   history.record(graph, label);
   graph = next;
   selectedEdge = nextSelectedEdge;
-  pendingVertex = -1;
+  pendingVertex = nextPendingVertex;
   sourceDiagnostics = [];
   editorDiagnostics = diagnostic ? [diagnostic] : [];
   renderGraphState();
@@ -437,7 +466,6 @@ async function importFile(): Promise<void> {
   const file = elements.fileInput.files?.[0];
   elements.fileInput.value = "";
   if (!file) return;
-
   try {
     if (file.size > MAX_IMPORT_BYTES) {
       throw new Error(`File is too large (${Math.ceil(file.size / 1024 / 1024)} MB). Maximum is 10 MB.`);

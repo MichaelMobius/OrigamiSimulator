@@ -6,6 +6,7 @@ import {
   GeometryEditError,
   GraphHistory,
 } from "../src/geometryEditor.ts";
+import { splitEdgeAt } from "../src/edgeSplit.ts";
 
 function fixture() {
   return {
@@ -80,4 +81,43 @@ test("topology edits remove stale faceOrders and edgeOrders", () => {
   assert.equal(result.droppedOrderMetadata, true);
   assert.equal(result.graph.faceOrders, undefined);
   assert.equal(result.graph.edgeOrders, undefined);
+});
+
+test("splitting a boundary edge inserts a vertex into the incident face", () => {
+  const result = splitEdgeAt(fixture(), 0, 0.25);
+  assert.equal(result.vertexIndex, 4);
+  assert.equal(result.graph.vertices_coords?.length, 5);
+  assert.deepEqual(result.graph.vertices_coords?.[4], [0.25, 0]);
+  assert.deepEqual(result.graph.edges_vertices[0], [0, 4]);
+  assert.deepEqual(result.graph.edges_vertices[1], [4, 1]);
+  assert.deepEqual(result.graph.faces_vertices?.[0], [0, 4, 1, 2]);
+  assert.equal(result.graph.edges_assignment[0], "B");
+  assert.equal(result.graph.edges_assignment[1], "B");
+});
+
+test("splitting an internal crease preserves its assignment and updates both faces", () => {
+  const graph = {
+    ...fixture(),
+    edges_custom: ["e0", "e1", "e2", "e3", "hinge"],
+    vertices_custom: ["v0", "v1", "v2", "v3"],
+    faceOrders: [[0, 1, 1]],
+  };
+  const result = splitEdgeAt(graph, 4, 0.5);
+  assert.equal(result.graph.edges_vertices.length, 6);
+  assert.deepEqual(result.graph.edges_vertices[4], [0, 4]);
+  assert.deepEqual(result.graph.edges_vertices[5], [4, 2]);
+  assert.deepEqual(result.graph.edges_assignment.slice(4, 6), ["V", "V"]);
+  assert.deepEqual(result.graph.edges_foldAngle.slice(4, 6), [90, 90]);
+  assert.deepEqual(result.graph.faces_vertices, [[0, 1, 2, 4], [0, 4, 2, 3]]);
+  assert.deepEqual(result.graph.edges_custom, ["e0", "e1", "e2", "e3", "hinge", "hinge"]);
+  assert.deepEqual(result.graph.vertices_custom, ["v0", "v1", "v2", "v3", null]);
+  assert.equal(result.droppedOrderMetadata, true);
+  assert.equal(result.graph.faceOrders, undefined);
+});
+
+test("edge splits too close to an endpoint are rejected", () => {
+  assert.throws(
+    () => splitEdgeAt(fixture(), 0, 0.00001),
+    (error) => error instanceof GeometryEditError && error.code === "split-too-close-to-vertex",
+  );
 });

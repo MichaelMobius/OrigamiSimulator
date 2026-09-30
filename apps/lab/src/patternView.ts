@@ -17,7 +17,7 @@ const COLORS: Record<EdgeAssignment, string> = {
 export interface PatternViewOptions {
   svg: SVGSVGElement;
   empty: HTMLElement;
-  onSelectEdge(index: number): void;
+  onSelectEdge(index: number, parameter: number): void;
   onSelectVertex(index: number): void;
 }
 
@@ -66,7 +66,11 @@ export class PatternView {
       `${bounds.minX - padding} ${bounds.minY - padding} ${bounds.width + 2 * padding} ${bounds.height + 2 * padding}`,
     );
 
-    const vertexRadius = span * 0.0128;
+    // Keep the visible vertex compact. A separate invisible hit target preserves
+    // easy mouse/touch selection without inflating the focused SVG element's bounds.
+    const vertexRadius = span * 0.0085;
+    const vertexHitRadius = span * 0.026;
+
     edges.forEach((edge, index) => {
       const a = points[edge[0]];
       const b = points[edge[1]];
@@ -88,7 +92,7 @@ export class PatternView {
       if (index === this.selectedEdge) line.classList.add("selected");
       const select = (event: Event) => {
         event.stopPropagation();
-        this.options.onSelectEdge(index);
+        this.options.onSelectEdge(index, edgeParameter(event, svg, a, b));
       };
       line.addEventListener("click", select);
       line.addEventListener("keydown", (event) => {
@@ -101,13 +105,31 @@ export class PatternView {
     });
 
     points.forEach(([x, y], index) => {
+      const select = (event: Event) => {
+        event.stopPropagation();
+        this.options.onSelectVertex(index);
+      };
+
+      const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      hit.setAttribute("cx", String(x));
+      hit.setAttribute("cy", String(y));
+      hit.setAttribute("r", String(vertexHitRadius));
+      hit.setAttribute("fill", "transparent");
+      hit.setAttribute("stroke", "none");
+      hit.setAttribute("pointer-events", "all");
+      hit.classList.add("pattern-vertex-hit");
+      hit.dataset.index = String(index);
+      hit.setAttribute("aria-hidden", "true");
+      hit.addEventListener("click", select);
+      svg.append(hit);
+
       const point = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       point.setAttribute("cx", String(x));
       point.setAttribute("cy", String(y));
       point.setAttribute("r", String(vertexRadius));
       point.setAttribute("fill", index === this.pendingVertex ? "#ff593d" : "#111111");
-      point.setAttribute("stroke", "transparent");
-      point.setAttribute("stroke-width", "12");
+      point.setAttribute("stroke", index === this.pendingVertex ? "#ffffff" : "transparent");
+      point.setAttribute("stroke-width", index === this.pendingVertex ? "2" : "0");
       point.setAttribute("vector-effect", "non-scaling-stroke");
       point.classList.add("pattern-vertex");
       point.dataset.index = String(index);
@@ -115,10 +137,6 @@ export class PatternView {
       point.setAttribute("tabindex", "0");
       point.setAttribute("aria-label", `Vertex ${index}`);
       if (index === this.pendingVertex) point.classList.add("pending");
-      const select = (event: Event) => {
-        event.stopPropagation();
-        this.options.onSelectVertex(index);
-      };
       point.addEventListener("click", select);
       point.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -133,6 +151,24 @@ export class PatternView {
 
 export function assignmentColor(assignment: EdgeAssignment): string {
   return COLORS[assignment];
+}
+
+function edgeParameter(
+  event: Event,
+  svg: SVGSVGElement,
+  a: readonly [number, number],
+  b: readonly [number, number],
+): number {
+  if (!(event instanceof MouseEvent)) return 0.5;
+  const matrix = svg.getScreenCTM();
+  if (!matrix) return 0.5;
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= Number.EPSILON) return 0.5;
+  const parameter = ((point.x - a[0]) * dx + (point.y - a[1]) * dy) / lengthSquared;
+  return Math.max(0.01, Math.min(0.99, parameter));
 }
 
 function calculateBounds(points: ReadonlyArray<readonly [number, number]>) {
