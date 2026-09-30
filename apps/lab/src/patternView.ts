@@ -17,7 +17,7 @@ const COLORS: Record<EdgeAssignment, string> = {
 export interface PatternViewOptions {
   svg: SVGSVGElement;
   empty: HTMLElement;
-  onSelectEdge(index: number): void;
+  onSelectEdge(index: number, parameter: number): void;
   onSelectVertex(index: number): void;
 }
 
@@ -92,7 +92,7 @@ export class PatternView {
       if (index === this.selectedEdge) line.classList.add("selected");
       const select = (event: Event) => {
         event.stopPropagation();
-        this.options.onSelectEdge(index);
+        this.options.onSelectEdge(index, edgeParameter(event, svg, a, b));
       };
       line.addEventListener("click", select);
       line.addEventListener("keydown", (event) => {
@@ -151,6 +151,24 @@ export class PatternView {
 
 export function assignmentColor(assignment: EdgeAssignment): string {
   return COLORS[assignment];
+}
+
+function edgeParameter(
+  event: Event,
+  svg: SVGSVGElement,
+  a: readonly [number, number],
+  b: readonly [number, number],
+): number {
+  if (!(event instanceof MouseEvent)) return 0.5;
+  const matrix = svg.getScreenCTM();
+  if (!matrix) return 0.5;
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= Number.EPSILON) return 0.5;
+  const parameter = ((point.x - a[0]) * dx + (point.y - a[1]) * dy) / lengthSquared;
+  return Math.max(0.01, Math.min(0.99, parameter));
 }
 
 function calculateBounds(points: ReadonlyArray<readonly [number, number]>) {
