@@ -10,6 +10,7 @@ on:
       - "packages/core/**"
       - "js/origamiLabLegacyBridge.js"
       - ".github/workflows/lab.yml"
+      - ".github/workflows/pages.yml"
 
 jobs:
   lab-check:
@@ -42,6 +43,30 @@ jobs:
             sleep 0.2
           done
           npm run test:smoke
+      - name: Build project-path bundle
+        run: npm run build -- --base=/OrigamiSimulator/
+      - name: Run project-path smoke test
+        run: |
+          rm -rf ../../pages-test
+          mkdir -p ../../pages-test/OrigamiSimulator
+          rsync -a \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'CNAME' \
+            --exclude 'dist' \
+            --exclude 'pages-test' \
+            --exclude 'apps/lab/node_modules' \
+            --exclude 'apps/lab/artifacts' \
+            ../../ ../../pages-test/OrigamiSimulator/
+          cp -a ../../dist/lab/. ../../pages-test/OrigamiSimulator/
+          python3 -m http.server 4173 --directory ../../pages-test > /tmp/origami-pages-test.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          for i in {1..50}; do
+            if curl --fail --silent http://127.0.0.1:4173/OrigamiSimulator/apps/lab/ >/dev/null; then break; fi
+            sleep 0.2
+          done
+          ORIGAMI_LAB_URL=http://127.0.0.1:4173/OrigamiSimulator/apps/lab/ npm run test:smoke
       - name: Upload editor smoke artifacts
         if: always()
         uses: actions/upload-artifact@v4

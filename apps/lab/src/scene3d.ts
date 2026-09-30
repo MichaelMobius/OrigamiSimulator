@@ -1,5 +1,8 @@
 import * as THREE from "three";
-import type { NormalizedFoldGraph } from "../../../packages/core/src/index";
+import {
+  triangulateFace,
+  type NormalizedFoldGraph,
+} from "../../../packages/core/src/index";
 import { assignmentColor } from "./patternView";
 
 export class OrigamiScene {
@@ -33,14 +36,15 @@ export class OrigamiScene {
   }
 
   setGraph(graph: NormalizedFoldGraph, vertices?: number[][]): void {
+    const sourceCoords = graph.vertices_coords ?? [];
     const coords = vertices ?? toThreeCoordinates(graph);
     this.disposeModel();
 
-    const triangles = triangulateFaces(graph.faces_vertices ?? []);
+    const triangles = (graph.faces_vertices ?? []).flatMap((face) => triangulateFace(face, sourceCoords));
     const positionValues: number[] = [];
     for (const vertexIndex of triangles) {
       const vertex = coords[vertexIndex];
-      if (!vertex) continue;
+      if (!vertex || !vertex.every(Number.isFinite)) continue;
       positionValues.push(vertex[0] ?? 0, vertex[1] ?? 0, vertex[2] ?? 0);
     }
 
@@ -64,7 +68,7 @@ export class OrigamiScene {
     graph.edges_vertices.forEach((edge, index) => {
       const a = coords[edge[0]];
       const b = coords[edge[1]];
-      if (!a || !b) return;
+      if (!a || !b || !a.every(Number.isFinite) || !b.every(Number.isFinite)) return;
       edgePositions.push(...asVec3(a), ...asVec3(b));
       const color = new THREE.Color(assignmentColor(graph.edges_assignment[index] ?? "U"));
       edgeColors.push(color.r, color.g, color.b, color.r, color.g, color.b);
@@ -80,9 +84,10 @@ export class OrigamiScene {
   }
 
   private fitCamera(coords: number[][]): void {
-    if (coords.length === 0) return;
+    const finiteCoords = coords.filter((coord) => coord.length >= 3 && coord.every(Number.isFinite));
+    if (finiteCoords.length === 0) return;
     const box = new THREE.Box3();
-    coords.forEach((coord) => box.expandByPoint(new THREE.Vector3(...asVec3(coord))));
+    finiteCoords.forEach((coord) => box.expandByPoint(new THREE.Vector3(...asVec3(coord))));
     const sphere = box.getBoundingSphere(new THREE.Sphere());
     const radius = Math.max(sphere.radius, 0.15);
     const distance = radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.1;
@@ -148,19 +153,6 @@ function toThreeCoordinates(graph: NormalizedFoldGraph): number[][] {
     if (vertex.length >= 3) return [vertex[0] ?? 0, vertex[1] ?? 0, vertex[2] ?? 0];
     return [vertex[0] ?? 0, 0, vertex[1] ?? 0];
   });
-}
-
-function triangulateFaces(faces: number[][]): number[] {
-  const indices: number[] = [];
-  for (const face of faces) {
-    for (let i = 1; i < face.length - 1; i += 1) {
-      const a = face[0];
-      const b = face[i];
-      const c = face[i + 1];
-      if (a !== undefined && b !== undefined && c !== undefined) indices.push(a, b, c);
-    }
-  }
-  return indices;
 }
 
 function asVec3(vertex: readonly number[]): [number, number, number] {

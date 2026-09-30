@@ -1,4 +1,12 @@
-import type { EdgeAssignment, NormalizedFoldGraph } from "../../../packages/core/src/index";
+import {
+  faceSignedArea,
+  isSimpleFace,
+  isValidFaceDiagonal,
+} from "../../../packages/core/src/geometry/planar.ts";
+import type {
+  EdgeAssignment,
+  NormalizedFoldGraph,
+} from "../../../packages/core/src/fold/types.ts";
 
 const DERIVED_TOPOLOGY_KEYS = [
   "edges_faces",
@@ -8,6 +16,8 @@ const DERIVED_TOPOLOGY_KEYS = [
   "vertices_faces",
   "vertices_vertices",
 ] as const;
+
+const ORDER_METADATA_KEYS = ["faceOrders", "edgeOrders"] as const;
 
 export class GeometryEditError extends Error {
   readonly code: string;
@@ -23,11 +33,13 @@ export interface AddCreaseResult {
   graph: NormalizedFoldGraph;
   edgeIndex: number;
   splitFaceIndex: number;
+  droppedOrderMetadata: boolean;
 }
 
 export interface DeleteCreaseResult {
   graph: NormalizedFoldGraph;
   mergedFaceIndex: number;
+  droppedOrderMetadata: boolean;
 }
 
 export function addCreaseBetweenVertices(
@@ -64,22 +76,35 @@ export function addCreaseBetweenVertices(
   }
 
   const candidate = candidates[0]!;
+  const vertices = graph.vertices_coords ?? [];
+  if (!isSimpleFace(candidate.face, vertices)) {
+    throw new GeometryEditError("invalid-face", "The containing face is not a simple polygon.");
+  }
+  if (!isValidFaceDiagonal(candidate.face, vertices, vertexA, vertexB)) {
+    throw new GeometryEditError(
+      "crease-outside-face",
+      "That segment is not a valid interior diagonal of the selected face.",
+    );
+  }
+
   const aIndex = candidate.face.indexOf(vertexA);
   const bIndex = candidate.face.indexOf(vertexB);
   const pathAB = walkFace(candidate.face, aIndex, bIndex);
   const pathBA = walkFace(candidate.face, bIndex, aIndex);
 
-  if (pathAB.length === 2 || pathBA.length === 2) {
-    throw new GeometryEditError(
-      "adjacent-face-vertices",
-      "Adjacent face vertices must be connected by a boundary edge, not a new crease.",
-    );
-  }
-  if (pathAB.length < 3 || pathBA.length < 3) {
-    throw new GeometryEditError("invalid-face-split", "The crease would create a degenerate face.");
+  if (
+    pathAB.length < 3 ||
+    pathBA.length < 3 ||
+    !isSimpleFace(pathAB, vertices) ||
+    !isSimpleFace(pathBA, vertices) ||
+    Math.abs(faceSignedArea(pathAB, vertices)) <= 1e-9 ||
+    Math.abs(faceSignedArea(pathBA, vertices)) <= 1e-9
+  ) {
+    throw new GeometryEditError("invalid-face-split", "The crease would create a degenerate or self-intersecting face.");
   }
 
   const next = cloneGraph(graph);
+  const droppedOrderMetadata = hasOrderMetadata(next);
   const oldEdgeCount = next.edges_vertices.length;
   next.edges_vertices.push([vertexA, vertexB]);
   next.edges_assignment.push(assignment);
@@ -95,6 +120,7 @@ export function addCreaseBetweenVertices(
     graph: next,
     edgeIndex: oldEdgeCount,
     splitFaceIndex: candidate.index,
+    droppedOrderMetadata,
   };
 }
 
@@ -125,15 +151,22 @@ export function deleteInternalCrease(
   const pathAB = nonEdgePath(first.face, a, b);
   const pathBA = nonEdgePath(second.face, b, a);
   const merged = [...pathAB, ...pathBA.slice(1, -1)];
+  const vertices = graph.vertices_coords ?? [];
 
-  if (merged.length < 3 || new Set(merged).size !== merged.length) {
+  if (
+    merged.length < 3 ||
+    new Set(merged).size !== merged.length ||
+    !isSimpleFace(merged, vertices) ||
+    Math.abs(faceSignedArea(merged, vertices)) <= 1e-9
+  ) {
     throw new GeometryEditError(
       "invalid-face-merge",
-      "Removing this edge would create an invalid face.",
+      "Removing this edge would create a degenerate or self-intersecting face.",
     );
   }
 
   const next = cloneGraph(graph);
+  const droppedOrderMetadata = hasOrderMetadata(next);
   const oldEdgeCount = next.edges_vertices.length;
   next.edges_vertices.splice(edgeIndex, 1);
   next.edges_assignment.splice(edgeIndex, 1);
@@ -148,7 +181,7 @@ export function deleteInternalCrease(
   next.faces_vertices = nextFaces;
   clearDerivedTopology(next);
 
-  return { graph: next, mergedFaceIndex: low };
+  return { graph: next, mergedFaceIndex: low, droppedOrderMetadata };
 }
 
 export class GraphHistory {
@@ -251,8 +284,13 @@ function cloneGraph(graph: NormalizedFoldGraph): NormalizedFoldGraph {
   return structuredClone(graph) as NormalizedFoldGraph;
 }
 
+function hasOrderMetadata(graph: NormalizedFoldGraph): boolean {
+  return ORDER_METADATA_KEYS.some((key) => graph[key] !== undefined);
+}
+
 function clearDerivedTopology(graph: NormalizedFoldGraph): void {
   for (const key of DERIVED_TOPOLOGY_KEYS) delete graph[key];
+  for (const key of ORDER_METADATA_KEYS) delete graph[key];
   for (const key of Object.keys(graph)) {
     if (key.startsWith("faces_") && key !== "faces_vertices") delete graph[key];
   }
