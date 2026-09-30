@@ -1,0 +1,15 @@
+{
+  "name": "@origami-lab/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Framework-agnostic origami graph validation and simulation contracts for Origami Lab.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "check": "npm run test"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
