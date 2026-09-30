@@ -1,0 +1,63 @@
+name: Origami Lab core
+
+on:
+  push:
+    branches:
+      - main
+      - "origami-lab/**"
+  pull_request:
+    paths:
+      - "packages/core/**"
+      - "js/origamiLabLegacyBridge.js"
+      - ".github/workflows/core.yml"
+
+jobs:
+  core-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/core
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Build and test
+        run: npm test
+
+  legacy-webgl-regression:
+    needs: core-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/core
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run real WebGL regression
+        env:
+          ORIGAMI_BASE_URL: http://127.0.0.1:4173
+        run: |
+          python3 -m http.server 4173 --directory ../.. > /tmp/origami-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          npm run test:browser
+      - name: Upload numerical snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-webgl-regression
+          path: packages/core/artifacts/legacy-webgl-single-hinge.json
+          if-no-files-found: ignore

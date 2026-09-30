@@ -1,0 +1,17 @@
+{
+  "name": "@origami-lab/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Framework-agnostic origami graph validation and simulation contracts for Origami Lab.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:browser": "node test/browser/legacy-webgl-regression.mjs",
+    "check": "npm run test"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0",
+    "typescript": "^5.8.3"
+  }
+}
