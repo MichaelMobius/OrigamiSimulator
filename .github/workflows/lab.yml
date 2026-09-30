@@ -28,3 +28,26 @@ jobs:
         run: npm install
       - name: Typecheck and build
         run: npm run check
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run editor smoke test
+        env:
+          ORIGAMI_LAB_URL: http://127.0.0.1:5173/apps/lab/
+        run: |
+          npx vite --config vite.config.ts --host 127.0.0.1 > /tmp/origami-lab-vite.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          for i in {1..50}; do
+            if curl --fail --silent http://127.0.0.1:5173/apps/lab/ >/dev/null; then break; fi
+            sleep 0.2
+          done
+          npm run test:smoke
+      - name: Upload editor smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: origami-lab-editor-smoke
+          path: |
+            apps/lab/artifacts/origami-lab-editor.png
+            apps/lab/artifacts/origami-lab-smoke.json
+          if-no-files-found: ignore
