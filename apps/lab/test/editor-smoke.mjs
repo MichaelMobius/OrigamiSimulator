@@ -83,8 +83,25 @@ try {
   assert.equal(await page.locator("#edge-angle").inputValue(), "90");
 
   // In crease mode, clicking an edge inserts a vertex exactly on that edge.
+  // A horizontal SVG line has a zero-height geometry bbox, so dispatch the real
+  // browser click using the line's transformed midpoint instead of Playwright's
+  // actionability heuristic.
   await page.locator("#crease-tool").click();
-  await page.locator(".pattern-edge").nth(0).click({ position: { x: 20, y: 1 } });
+  await page.locator(".pattern-edge").nth(0).evaluate((line) => {
+    const svg = line.ownerSVGElement;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) throw new Error("SVG transform unavailable");
+    const x1 = Number(line.getAttribute("x1"));
+    const y1 = Number(line.getAttribute("y1"));
+    const x2 = Number(line.getAttribute("x2"));
+    const y2 = Number(line.getAttribute("y2"));
+    const midpoint = new DOMPoint((x1 + x2) / 2, (y1 + y2) / 2).matrixTransform(matrix);
+    line.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      clientX: midpoint.x,
+      clientY: midpoint.y,
+    }));
+  });
   assert.equal(await page.locator(".pattern-vertex").count(), 5);
   assert.equal(await page.locator(".pattern-edge").count(), 6);
   assert.match(await page.locator("#model-stats").innerText(), /Vertices\s+5/);
