@@ -89,7 +89,7 @@ try {
   // Precision CAD scenario: midpoint snap, angle snap/readout, safe vertex drag,
   // edge dimensions, mirror transform, and undo.
   await createCustomSheet(page, "Precision smoke", 200, 140);
-  await page.locator(".pattern-edge").nth(0).click();
+  await clickEdgeMidpoint(page, 0);
   assert.match(await page.locator("#edge-metrics").innerText(), /Length\s+200\s+mm/i);
   assert.match(await page.locator("#edge-metrics").innerText(), /planar angle\s+0°/i);
 
