@@ -24,6 +24,15 @@ import {
 import { splitEdgeAt } from "./edgeSplit";
 import { IframeLegacyRuntime } from "./legacyRuntime";
 import { PatternView } from "./patternView";
+import {
+  angularSnapPoint,
+  edgeMeasurement,
+  findMidpointSnap,
+  mirrorPattern,
+  moveVertexSafely,
+  pointMeasurement,
+  snapMovePointToGrid,
+} from "./precisionCad";
 import { OrigamiScene } from "./scene3d";
 
 const EXAMPLE: FoldGraph = {
@@ -59,6 +68,7 @@ const elements = {
   edgeIndex: required<HTMLElement>("edge-index"),
   edgeAssignment: required<HTMLSelectElement>("edge-assignment"),
   edgeAngle: required<HTMLInputElement>("edge-angle"),
+  edgeMetrics: required<HTMLElement>("edge-metrics"),
   deleteEdge: required<HTMLButtonElement>("delete-edge-button"),
   diagnostics: required<HTMLElement>("diagnostics"),
   validationBadge: required<HTMLElement>("validation-badge"),
@@ -72,6 +82,9 @@ const elements = {
   creaseTool: required<HTMLButtonElement>("crease-tool"),
   snapToggle: required<HTMLButtonElement>("snap-toggle"),
   gridSize: required<HTMLInputElement>("grid-size"),
+  precisionReadout: required<HTMLElement>("precision-readout"),
+  mirrorVertical: required<HTMLButtonElement>("mirror-vertical"),
+  mirrorHorizontal: required<HTMLButtonElement>("mirror-horizontal"),
   toolHint: required<HTMLElement>("tool-hint"),
   fileInput: required<HTMLInputElement>("file-input"),
   legacyIframe: required<HTMLIFrameElement>("legacy-runtime"),
@@ -82,6 +95,7 @@ let selectedEdge = -1;
 let activeTool: EditorTool = "select";
 let pendingVertex = -1;
 let snapEnabled = true;
+let lastPointerPoint: Vec2 | undefined;
 let sourceDiagnostics: FoldDiagnostic[] = [];
 let editorDiagnostics: FoldDiagnostic[] = [];
 let runtimeReady = false;
@@ -95,6 +109,8 @@ const pattern = new PatternView({
   empty: elements.empty,
   onSelectEdge: handleEdgeSelect,
   onSelectVertex: handleVertexSelect,
+  onMoveVertex: handleVertexMove,
+  onPointerPosition: handlePointerPosition,
 });
 
 elements.svg.addEventListener("click", (event) => handlePatternBackgroundClick(event));
@@ -113,6 +129,8 @@ elements.selectTool.addEventListener("click", () => setTool("select"));
 elements.creaseTool.addEventListener("click", () => setTool("crease"));
 elements.snapToggle.addEventListener("click", toggleSnap);
 elements.gridSize.addEventListener("input", renderToolState);
+elements.mirrorVertical.addEventListener("click", () => mirrorWholePattern("vertical"));
+elements.mirrorHorizontal.addEventListener("click", () => mirrorWholePattern("horizontal"));
 document.addEventListener("keydown", handleKeyboardShortcut);
 
 loadGraph(EXAMPLE);
@@ -141,6 +159,7 @@ function loadGraph(input: FoldGraph): void {
   editorDiagnostics = [];
   selectedEdge = -1;
   pendingVertex = -1;
+  lastPointerPoint = undefined;
   activeTool = "select";
   history.clear();
   autoGridForGraph();
@@ -156,6 +175,7 @@ function renderAll(): void {
   renderStats();
   renderToolState();
   renderHistory();
+  renderPrecisionReadout(lastPointerPoint);
   elements.metric.textContent = "flat preview";
 }
 
@@ -168,6 +188,7 @@ function renderGraphState(): void {
   renderStats();
   renderToolState();
   renderHistory();
+  renderPrecisionReadout(lastPointerPoint);
   elements.metric.textContent = "flat preview";
 }
 
@@ -183,7 +204,20 @@ function handlePatternBackgroundClick(event: MouseEvent): void {
 
 function handleCadPoint(rawPoint: Vec2): void {
   try {
-    const snap = snapPointToGraph(graph, rawPoint, {
+    let precisionPoint = rawPoint;
+    if (pendingVertex >= 0 && snapEnabled) {
+      precisionPoint = angularSnapPoint(graph, pendingVertex, rawPoint).point;
+    }
+
+    if (snapEnabled) {
+      const midpoint = findMidpointSnap(graph, precisionPoint, snapTolerance() * 0.72);
+      if (midpoint) {
+        handleEdgeSelect(midpoint.edgeIndex, midpoint.parameter);
+        return;
+      }
+    }
+
+    const snap = snapPointToGraph(graph, precisionPoint, {
       tolerance: snapEnabled ? snapTolerance() : 0,
       gridEnabled: snapEnabled,
       gridSize: currentGridSize(),
@@ -273,12 +307,14 @@ function handleVertexSelect(index: number): void {
     editorDiagnostics = [];
     renderToolState();
     renderDiagnostics();
+    renderPrecisionReadout(lastPointerPoint);
     return;
   }
 
   if (pendingVertex === index) {
     pendingVertex = -1;
     renderToolState();
+    renderPrecisionReadout(lastPointerPoint);
     return;
   }
 
@@ -296,10 +332,29 @@ function handleVertexSelect(index: number): void {
   }
 }
 
+function handleVertexMove(index: number, rawPoint: Vec2): void {
+  if (activeTool !== "select") return;
+  try {
+    const target = snapEnabled ? snapMovePointToGrid(rawPoint, currentGridSize()) : rawPoint;
+    const next = moveVertexSafely(graph, index, target);
+    applyGraphEdit(next, "Move vertex", -1);
+    elements.toolHint.textContent = `Moved vertex ${index} to ${formatNumber(target[0])}, ${formatNumber(target[1])}.`;
+  } catch (error) {
+    addEditorDiagnostic(error, geometryCode(error));
+    pattern.setGraph(graph);
+  }
+}
+
+function handlePointerPosition(point: Vec2 | undefined): void {
+  lastPointerPoint = point;
+  renderPrecisionReadout(point);
+}
+
 function selectEdge(index: number): void {
   selectedEdge = index;
   pattern.selectEdge(index);
   renderSelection();
+  renderPrecisionReadout(lastPointerPoint);
 }
 
 function setTool(tool: EditorTool): void {
@@ -309,11 +364,13 @@ function setTool(tool: EditorTool): void {
   pattern.selectEdge(selectedEdge);
   renderSelection();
   renderToolState();
+  renderPrecisionReadout(lastPointerPoint);
 }
 
 function toggleSnap(): void {
   snapEnabled = !snapEnabled;
   renderToolState();
+  renderPrecisionReadout(lastPointerPoint);
 }
 
 function renderToolState(): void {
@@ -328,11 +385,11 @@ function renderToolState(): void {
   pattern.setGrid(currentGridSize(), activeTool === "crease" && snapEnabled);
 
   if (activeTool === "select") {
-    elements.toolHint.textContent = "Select an edge to edit its assignment or angle.";
+    elements.toolHint.textContent = "Select an edge to edit it, or drag a vertex to move it safely.";
   } else if (pendingVertex < 0) {
-    elements.toolHint.textContent = "Crease CAD · click a vertex, edge, or any free point to start.";
+    elements.toolHint.textContent = "Crease CAD · click a vertex, edge, midpoint, or any free point to start.";
   } else {
-    elements.toolHint.textContent = `Crease CAD · vertex ${pendingVertex} selected; click anywhere to finish. Crossings are split automatically.`;
+    elements.toolHint.textContent = `Crease CAD · vertex ${pendingVertex} selected; 30°/45°/60°/90° guides and crossings snap automatically.`;
   }
 }
 
@@ -341,12 +398,41 @@ function renderSelection(): void {
   elements.selectionEmpty.hidden = hasSelection;
   elements.edgeControls.hidden = !hasSelection;
   elements.deleteEdge.disabled = !hasSelection || !isInternalEdge(selectedEdge);
-  if (!hasSelection) return;
+  if (!hasSelection) {
+    elements.edgeMetrics.textContent = "";
+    return;
+  }
 
   elements.edgeIndex.textContent = String(selectedEdge);
   elements.edgeAssignment.value = graph.edges_assignment[selectedEdge] ?? "U";
   const angle = graph.edges_foldAngle[selectedEdge];
   elements.edgeAngle.value = String(typeof angle === "number" ? angle : 0);
+  const measured = edgeMeasurement(graph, selectedEdge);
+  elements.edgeMetrics.textContent = measured
+    ? `Length ${formatLength(measured.length)} · planar angle ${formatAngle(measured.angleDegrees)}`
+    : "";
+}
+
+function renderPrecisionReadout(point: Vec2 | undefined): void {
+  if (!point) {
+    elements.precisionReadout.textContent = selectedEdge >= 0
+      ? elements.edgeMetrics.textContent || "Precision CAD"
+      : "x — · y —";
+    return;
+  }
+
+  const units = displayUnits();
+  let label = `x ${formatNumber(point[0])}${units} · y ${formatNumber(point[1])}${units}`;
+  if (pendingVertex >= 0) {
+    const origin = projectVertices2D(graph.vertices_coords ?? [])[pendingVertex];
+    if (origin) {
+      const snapped = snapEnabled ? angularSnapPoint(graph, pendingVertex, point) : { point, angleDegrees: pointMeasurement(origin, point).angleDegrees, snapped: false };
+      const measured = pointMeasurement(origin, snapped.point);
+      label = `L ${formatNumber(measured.length)}${units} · θ ${formatAngle(measured.angleDegrees)} · x ${formatNumber(snapped.point[0])}${units} · y ${formatNumber(snapped.point[1])}${units}`;
+      if (snapped.snapped) label += " · angle snap";
+    }
+  }
+  elements.precisionReadout.textContent = label;
 }
 
 function updateSelectedAssignment(): void {
@@ -387,6 +473,15 @@ function deleteSelectedEdge(): void {
       -1,
       result.droppedOrderMetadata ? topologyMetadataDiagnostic() : undefined,
     );
+  } catch (error) {
+    addEditorDiagnostic(error, geometryCode(error));
+  }
+}
+
+function mirrorWholePattern(axis: "horizontal" | "vertical"): void {
+  try {
+    const next = mirrorPattern(graph, axis);
+    applyGraphEdit(next, axis === "vertical" ? "Mirror pattern left/right" : "Mirror pattern up/down", -1);
   } catch (error) {
     addEditorDiagnostic(error, geometryCode(error));
   }
@@ -441,6 +536,7 @@ function handleKeyboardShortcut(event: KeyboardEvent): void {
   if (event.key === "Escape" && activeTool === "crease" && !isTextEditingTarget(event.target)) {
     pendingVertex = -1;
     renderToolState();
+    renderPrecisionReadout(lastPointerPoint);
     return;
   }
   if (!(event.ctrlKey || event.metaKey) || isTextEditingTarget(event.target)) return;
@@ -666,6 +762,26 @@ function autoGridForGraph(): void {
   } else {
     elements.gridSize.value = String(Number((span / 10).toPrecision(3)));
   }
+}
+
+function displayUnits(): string {
+  const units = graph.file_units;
+  if (typeof units !== "string" || units.length === 0 || units === "unit") return "";
+  return ` ${units}`;
+}
+
+function formatNumber(value: number): string {
+  const magnitude = Math.abs(value);
+  const digits = magnitude >= 100 ? 1 : magnitude >= 10 ? 2 : 3;
+  return Number(value.toFixed(digits)).toString();
+}
+
+function formatLength(value: number): string {
+  return `${formatNumber(value)}${displayUnits()}`;
+}
+
+function formatAngle(value: number): string {
+  return `${Number(value.toFixed(1))}°`;
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {

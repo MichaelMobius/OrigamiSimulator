@@ -2,6 +2,7 @@ import {
   projectVertices2D,
   type EdgeAssignment,
   type NormalizedFoldGraph,
+  type Vec2,
 } from "../../../packages/core/src/index";
 
 const COLORS: Record<EdgeAssignment, string> = {
@@ -19,6 +20,8 @@ export interface PatternViewOptions {
   empty: HTMLElement;
   onSelectEdge(index: number, parameter: number): void;
   onSelectVertex(index: number): void;
+  onMoveVertex?(index: number, point: Vec2): void;
+  onPointerPosition?(point: Vec2 | undefined): void;
 }
 
 export class PatternView {
@@ -28,13 +31,25 @@ export class PatternView {
   private tool: "select" | "crease" = "select";
   private gridSpacing = 0;
   private gridVisible = false;
+  private dragVertex = -1;
+  private dragPreview: Vec2 | undefined;
+  private dragMoved = false;
+  private suppressClickUntil = 0;
 
-  constructor(private readonly options: PatternViewOptions) {}
+  constructor(private readonly options: PatternViewOptions) {
+    options.svg.addEventListener("pointermove", (event) => this.handlePointerMove(event));
+    options.svg.addEventListener("pointerleave", () => {
+      if (this.dragVertex < 0) this.options.onPointerPosition?.(undefined);
+    });
+    window.addEventListener("pointerup", (event) => this.finishDrag(event));
+    window.addEventListener("pointercancel", () => this.cancelDrag());
+  }
 
   setGraph(graph: NormalizedFoldGraph): void {
     this.graph = graph;
     if (this.selectedEdge >= graph.edges_vertices.length) this.selectedEdge = -1;
     if (this.pendingVertex >= (graph.vertices_coords?.length ?? 0)) this.pendingVertex = -1;
+    if (this.dragVertex >= (graph.vertices_coords?.length ?? 0)) this.cancelDrag();
     this.render();
   }
 
@@ -46,6 +61,7 @@ export class PatternView {
   setInteraction(tool: "select" | "crease", pendingVertex: number): void {
     this.tool = tool;
     this.pendingVertex = pendingVertex;
+    if (tool !== "select" && this.dragVertex >= 0) this.cancelDrag();
     this.render();
   }
 
@@ -65,8 +81,13 @@ export class PatternView {
     if (!graph || vertices.length === 0) return;
 
     svg.dataset.tool = this.tool;
-    const points = projectVertices2D(vertices);
-    const bounds = calculateBounds(points);
+    // Keep the coordinate transform stable during a drag. The viewBox is derived
+    // from committed geometry only; the temporary drag preview may extend beyond
+    // it, but must not change SVG↔screen mapping mid-gesture.
+    const committedPoints = projectVertices2D(vertices);
+    const bounds = calculateBounds(committedPoints);
+    const points = committedPoints.map(([x, y]) => [x, y] as Vec2);
+    if (this.dragVertex >= 0 && this.dragPreview) points[this.dragVertex] = this.dragPreview;
     const span = Math.max(bounds.width, bounds.height, 1);
     const padding = span * 0.12;
     svg.setAttribute(
@@ -126,7 +147,17 @@ export class PatternView {
     points.forEach(([x, y], index) => {
       const select = (event: Event) => {
         event.stopPropagation();
+        if (performance.now() < this.suppressClickUntil) return;
         this.options.onSelectVertex(index);
+      };
+      const beginDrag = (event: PointerEvent) => {
+        if (this.tool !== "select" || !this.options.onMoveVertex) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.dragVertex = index;
+        this.dragPreview = [x, y];
+        this.dragMoved = false;
+        svg.dataset.draggingVertex = String(index);
       };
 
       const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -140,6 +171,7 @@ export class PatternView {
       hit.dataset.index = String(index);
       hit.setAttribute("aria-hidden", "true");
       hit.addEventListener("click", select);
+      hit.addEventListener("pointerdown", beginDrag);
       svg.append(hit);
 
       const point = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -151,12 +183,14 @@ export class PatternView {
       point.setAttribute("stroke-width", index === this.pendingVertex ? "2" : "0");
       point.setAttribute("vector-effect", "non-scaling-stroke");
       point.classList.add("pattern-vertex");
+      if (index === this.dragVertex) point.classList.add("dragging");
       point.dataset.index = String(index);
       point.setAttribute("role", "button");
       point.setAttribute("tabindex", "0");
       point.setAttribute("aria-label", `Vertex ${index}`);
       if (index === this.pendingVertex) point.classList.add("pending");
       point.addEventListener("click", select);
+      point.addEventListener("pointerdown", beginDrag);
       point.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -165,6 +199,41 @@ export class PatternView {
       });
       svg.append(point);
     });
+  }
+
+  private handlePointerMove(event: PointerEvent): void {
+    const point = eventToSvgPoint(event, this.options.svg);
+    if (!point) return;
+    this.options.onPointerPosition?.(point);
+    if (this.dragVertex < 0) return;
+    if (!this.dragPreview || squaredDistance(this.dragPreview, point) > 1e-12) this.dragMoved = true;
+    this.dragPreview = point;
+    this.render();
+  }
+
+  private finishDrag(event: PointerEvent): void {
+    if (this.dragVertex < 0) return;
+    const index = this.dragVertex;
+    const finalPoint = eventToSvgPoint(event, this.options.svg) ?? this.dragPreview;
+    const moved = this.dragMoved;
+    this.dragVertex = -1;
+    this.dragPreview = undefined;
+    this.dragMoved = false;
+    delete this.options.svg.dataset.draggingVertex;
+    if (moved && finalPoint) {
+      this.suppressClickUntil = performance.now() + 250;
+      this.options.onMoveVertex?.(index, finalPoint);
+    } else {
+      this.render();
+    }
+  }
+
+  private cancelDrag(): void {
+    this.dragVertex = -1;
+    this.dragPreview = undefined;
+    this.dragMoved = false;
+    delete this.options.svg.dataset.draggingVertex;
+    this.render();
   }
 }
 
@@ -233,6 +302,19 @@ function edgeParameter(
   if (lengthSquared <= Number.EPSILON) return 0.5;
   const parameter = ((point.x - a[0]) * dx + (point.y - a[1]) * dy) / lengthSquared;
   return Math.max(0.01, Math.min(0.99, parameter));
+}
+
+function eventToSvgPoint(event: PointerEvent, svg: SVGSVGElement): Vec2 | undefined {
+  const matrix = svg.getScreenCTM();
+  if (!matrix) return undefined;
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+  return [point.x, point.y];
+}
+
+function squaredDistance(a: Vec2, b: Vec2): number {
+  const dx = a[0] - b[0];
+  const dy = a[1] - b[1];
+  return dx * dx + dy * dy;
 }
 
 function calculateBounds(points: ReadonlyArray<readonly [number, number]>) {

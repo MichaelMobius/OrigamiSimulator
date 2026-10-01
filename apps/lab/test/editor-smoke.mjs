@@ -51,6 +51,7 @@ try {
   assert.equal(await page.locator("#three-stage canvas").count(), 1);
   assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
   assert.equal(await page.locator(".pattern-vertex-hit").first().getAttribute("fill"), "none");
+  assert.match(await page.locator("#precision-readout").innerText(), /x\s+—/i);
 
   // CAD scenario 1: start a new sheet and create a crease from a free interior point.
   await createCustomSheet(page, "Free point smoke", 200, 140);
@@ -83,6 +84,43 @@ try {
   assert.equal(await page.locator(".pattern-edge").count(), 12);
   assert.match(await page.locator("#model-stats").innerText(), /Faces\s+4/);
   assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+4/);
+  assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
+
+  // Precision CAD scenario: midpoint snap, angle snap/readout, safe vertex drag,
+  // edge dimensions, mirror transform, and undo.
+  await createCustomSheet(page, "Precision smoke", 200, 140);
+  await clickEdgeMidpoint(page, 0);
+  assert.match(await page.locator("#edge-metrics").innerText(), /Length\s+200\s+mm/i);
+  assert.match(await page.locator("#edge-metrics").innerText(), /planar angle\s+0°/i);
+
+  await page.locator("#mirror-vertical").click();
+  assert.equal(Number(await page.locator('.pattern-vertex[data-index="0"]').getAttribute("cx")), 200);
+  await page.locator("#undo-button").click();
+  assert.equal(Number(await page.locator('.pattern-vertex[data-index="0"]').getAttribute("cx")), 0);
+
+  await dragVertexToSvgPoint(page, 1, 210, 0);
+  assert.equal(Number(await page.locator('.pattern-vertex[data-index="1"]').getAttribute("cx")), 210);
+  assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
+  await page.locator("#undo-button").click();
+  assert.equal(Number(await page.locator('.pattern-vertex[data-index="1"]').getAttribute("cx")), 200);
+
+  await page.locator("#crease-tool").click();
+  await clickSvgPoint(page, 101, 1);
+  assert.equal(await page.locator(".pattern-vertex.pending").count(), 1);
+  assert.equal(Number(await page.locator(".pattern-vertex.pending").getAttribute("cx")), 100);
+  assert.equal(Number(await page.locator(".pattern-vertex.pending").getAttribute("cy")), 0);
+  await movePointerSvgPoint(page, 150, 50);
+  assert.match(await page.locator("#precision-readout").innerText(), /θ\s+45/i);
+  await page.keyboard.press("Escape");
+
+  await createCustomSheet(page, "Angle snap smoke", 200, 140);
+  await page.locator("#crease-tool").click();
+  await page.locator('.pattern-vertex[data-index="0"]').click();
+  await clickSvgPoint(page, 80, 75);
+  assert.equal(await page.locator(".pattern-vertex").count(), 5);
+  const snappedFree = page.locator('.pattern-vertex[data-index="4"]');
+  assert.equal(Number(await snappedFree.getAttribute("cx")), 80);
+  assert.equal(Number(await snappedFree.getAttribute("cy")), 80);
   assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
 
   // Restore the canonical fixture for the existing editor and solver regression flow.
@@ -161,10 +199,15 @@ try {
     `${JSON.stringify({
       baseUrl,
       metric,
-      version: "0.6.0",
+      version: "0.7.0",
       newPatternDesigner: true,
       freePointDrawing: true,
       snappingAndGrid: true,
+      midpointSnap: true,
+      angularSnap: true,
+      livePrecisionReadout: true,
+      safeVertexDrag: true,
+      patternMirror: true,
       automaticIntersections: true,
       compactVertexSelection: true,
       svgSelectionFiltersDisabled: true,
@@ -176,7 +219,7 @@ try {
       badResponses,
     }, null, 2)}\n`,
   );
-  console.log(`Origami Lab v0.6 smoke test passed at ${baseUrl}: ${metric}`);
+  console.log(`Origami Lab v0.7 smoke test passed at ${baseUrl}: ${metric}`);
 } finally {
   await browser.close();
 }
@@ -204,6 +247,50 @@ async function clickSvgPoint(page, x, y) {
       bubbles: true,
       clientX: screen.x,
       clientY: screen.y,
+    }));
+  }, { x, y });
+}
+
+async function movePointerSvgPoint(page, x, y) {
+  await page.locator("#pattern-svg").evaluate((svg, point) => {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) throw new Error("SVG transform unavailable");
+    const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+    svg.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true,
+      clientX: screen.x,
+      clientY: screen.y,
+      pointerId: 1,
+    }));
+  }, { x, y });
+}
+
+async function dragVertexToSvgPoint(page, index, x, y) {
+  await page.locator(`.pattern-vertex[data-index="${index}"]`).evaluate((vertex, point) => {
+    const svg = vertex.ownerSVGElement;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) throw new Error("SVG transform unavailable");
+    const start = new DOMPoint(Number(vertex.getAttribute("cx")), Number(vertex.getAttribute("cy"))).matrixTransform(matrix);
+    const end = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+    vertex.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      clientX: start.x,
+      clientY: start.y,
+      pointerId: 3,
+      buttons: 1,
+    }));
+    svg.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true,
+      clientX: end.x,
+      clientY: end.y,
+      pointerId: 3,
+      buttons: 1,
+    }));
+    window.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      clientX: end.x,
+      clientY: end.y,
+      pointerId: 3,
     }));
   }, { x, y });
 }
