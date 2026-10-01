@@ -22,6 +22,12 @@ export interface EdgeMeasurement {
   midpoint: Vec2;
 }
 
+export interface MidpointSnap {
+  point: Vec2;
+  edgeIndex: number;
+  parameter: 0.5;
+}
+
 export function edgeMeasurement(graph: NormalizedFoldGraph, edgeIndex: number): EdgeMeasurement | undefined {
   const edge = graph.edges_vertices[edgeIndex];
   if (!edge) return undefined;
@@ -36,6 +42,30 @@ export function edgeMeasurement(graph: NormalizedFoldGraph, edgeIndex: number): 
     angleDegrees: normalizeAngle(Math.atan2(dy, dx) * 180 / Math.PI),
     midpoint: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
   };
+}
+
+export function findMidpointSnap(
+  graph: NormalizedFoldGraph,
+  rawPoint: Vec2,
+  tolerance: number,
+): MidpointSnap | undefined {
+  if (!(Number.isFinite(tolerance) && tolerance > 0)) return undefined;
+  const points = projectVertices2D(graph.vertices_coords ?? []);
+  const thresholdSquared = tolerance * tolerance;
+  let best: MidpointSnap | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  graph.edges_vertices.forEach(([aIndex, bIndex], edgeIndex) => {
+    const a = points[aIndex];
+    const b = points[bIndex];
+    if (!a || !b) return;
+    const midpoint: Vec2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const distance = distanceSquared(rawPoint, midpoint);
+    if (distance <= thresholdSquared && distance < bestDistance) {
+      bestDistance = distance;
+      best = { point: midpoint, edgeIndex, parameter: 0.5 };
+    }
+  });
+  return best;
 }
 
 export function pointMeasurement(origin: Vec2, point: Vec2): { length: number; angleDegrees: number } {
