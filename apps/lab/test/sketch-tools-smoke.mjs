@@ -23,7 +23,8 @@ try {
   await createCustomSheet(page, "Sketch tools smoke", 200, 140);
   await setExactLine(page, { x: 0, y: 70, length: 200, angle: 0 });
   await page.locator("#exact-draw-button").click();
-  await page.waitForFunction(() => /Faces\s+2/.test(document.querySelector("#model-stats")?.textContent ?? ""));
+  await page.waitForTimeout(400);
+  await assertModelMatches(page, /Faces\s+2/, "first exact valley line");
   assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+1/);
   assert.equal(await page.locator(".pattern-vertex").count(), 6);
 
@@ -32,7 +33,8 @@ try {
   assert.match(await page.locator("#draw-type-label").innerText(), /Mountain/i);
   await setExactLine(page, { x: 100, y: 0, length: 140, angle: 90 });
   await page.locator("#exact-draw-button").click();
-  await page.waitForFunction(() => /Faces\s+4/.test(document.querySelector("#model-stats")?.textContent ?? ""));
+  await page.waitForTimeout(400);
+  await assertModelMatches(page, /Faces\s+4/, "crossing exact mountain line");
   assert.equal(await page.locator(".pattern-vertex").count(), 9);
   assert.match(await page.locator("#model-stats").innerText(), /Mountains\s+2/);
   assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+2/);
@@ -63,13 +65,26 @@ try {
   await page.locator('[data-draw-assignment="C"]').click();
   await setExactLine(page, { x: 0, y: 70, length: 200, angle: 0 });
   await page.locator("#exact-draw-button").click();
-  await page.waitForFunction(() => /Cuts\s+1/.test(document.querySelector("#model-stats")?.textContent ?? ""));
+  await page.waitForTimeout(400);
+  await assertModelMatches(page, /Cuts\s+1/, "exact cut line");
   assert.match(await page.locator("#diagnostics").innerText(), /does not model physical sheet separation/i);
 
   assert.equal(pageErrors.length, 0, `page errors: ${pageErrors.join("\n")}`);
   console.log(`Origami Lab v0.8 sketch tools smoke passed at ${baseUrl}`);
 } finally {
   await browser.close();
+}
+
+async function assertModelMatches(page, pattern, label) {
+  const stats = await page.locator("#model-stats").innerText();
+  if (!pattern.test(stats)) {
+    const diagnostics = await page.locator("#diagnostics").innerText();
+    const hint = await page.locator("#tool-hint").innerText();
+    const pending = await page.locator(".pattern-vertex.pending").count();
+    const vertices = await page.locator(".pattern-vertex").count();
+    const edges = await page.locator(".pattern-edge").count();
+    throw new Error(`${label} failed\nstats:\n${stats}\ndiagnostics:\n${diagnostics}\nhint: ${hint}\npending=${pending} vertices=${vertices} edges=${edges}`);
+  }
 }
 
 async function createCustomSheet(page, title, width, height) {
