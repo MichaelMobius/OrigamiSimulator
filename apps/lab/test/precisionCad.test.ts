@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   angularSnapPoint,
   edgeMeasurement,
+  findMidpointSnap,
   mirrorPattern,
   moveVertexSafely,
   snapMovePointToGrid,
@@ -25,6 +26,13 @@ test("edge measurement reports length, angle, and midpoint", () => {
   assert.ok(Math.abs(measured.length - Math.sqrt(20_000)) < 1e-9);
   assert.ok(Math.abs(measured.angleDegrees - 45) < 1e-9);
   assert.deepEqual(measured.midpoint, [50, 50]);
+});
+
+test("midpoint snapping prefers the exact middle of a nearby edge", () => {
+  const snap = findMidpointSnap(square(), [51, 1], 3)!;
+  assert.equal(snap.edgeIndex, 0);
+  assert.equal(snap.parameter, 0.5);
+  assert.deepEqual(snap.point, [50, 0]);
 });
 
 test("angular snapping locks near canonical 30/45/60/90 degree directions", () => {
