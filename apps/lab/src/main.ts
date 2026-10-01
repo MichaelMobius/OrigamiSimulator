@@ -33,6 +33,13 @@ import {
   pointMeasurement,
   snapMovePointToGrid,
 } from "./precisionCad";
+import {
+  DRAW_ASSIGNMENTS,
+  assignmentName,
+  foldAngleForAssignment,
+  pointFromLengthAngle,
+  retargetEdgeFromFirstVertex,
+} from "./sketchCad";
 import { OrigamiScene } from "./scene3d";
 
 const EXAMPLE: FoldGraph = {
@@ -54,6 +61,7 @@ const MAX_FACES = 100_000;
 type EditorTool = "select" | "crease";
 
 const elements = {
+  workspace: required<HTMLElement>("workspace"),
   svg: required<SVGSVGElement>("pattern-svg"),
   patternStage: required<HTMLElement>("pattern-stage"),
   empty: required<HTMLElement>("pattern-empty"),
@@ -69,6 +77,11 @@ const elements = {
   edgeAssignment: required<HTMLSelectElement>("edge-assignment"),
   edgeAngle: required<HTMLInputElement>("edge-angle"),
   edgeMetrics: required<HTMLElement>("edge-metrics"),
+  edgePlanarLength: required<HTMLInputElement>("edge-planar-length"),
+  edgePlanarAngle: required<HTMLInputElement>("edge-planar-angle"),
+  applyEdgeGeometry: required<HTMLButtonElement>("apply-edge-geometry"),
+  edgeHorizontal: required<HTMLButtonElement>("edge-horizontal"),
+  edgeVertical: required<HTMLButtonElement>("edge-vertical"),
   deleteEdge: required<HTMLButtonElement>("delete-edge-button"),
   diagnostics: required<HTMLElement>("diagnostics"),
   validationBadge: required<HTMLElement>("validation-badge"),
@@ -85,16 +98,31 @@ const elements = {
   precisionReadout: required<HTMLElement>("precision-readout"),
   mirrorVertical: required<HTMLButtonElement>("mirror-vertical"),
   mirrorHorizontal: required<HTMLButtonElement>("mirror-horizontal"),
+  designFocusButton: required<HTMLButtonElement>("design-focus-button"),
+  drawTypeLabel: required<HTMLElement>("draw-type-label"),
+  drawFoldAngle: required<HTMLInputElement>("draw-fold-angle"),
+  exactStartX: required<HTMLInputElement>("exact-start-x"),
+  exactStartY: required<HTMLInputElement>("exact-start-y"),
+  exactLength: required<HTMLInputElement>("exact-length"),
+  exactLineAngle: required<HTMLInputElement>("exact-line-angle"),
+  exactUsePointer: required<HTMLButtonElement>("exact-use-pointer"),
+  exactDrawButton: required<HTMLButtonElement>("exact-draw-button"),
   toolHint: required<HTMLElement>("tool-hint"),
   fileInput: required<HTMLInputElement>("file-input"),
   legacyIframe: required<HTMLIFrameElement>("legacy-runtime"),
 };
+
+const assignmentButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-draw-assignment]"),
+);
 
 let graph = normalizeFoldGraph(structuredClone(EXAMPLE)).graph;
 let selectedEdge = -1;
 let activeTool: EditorTool = "select";
 let pendingVertex = -1;
 let snapEnabled = true;
+let designFocus = false;
+let drawAssignment: EdgeAssignment = "V";
 let lastPointerPoint: Vec2 | undefined;
 let sourceDiagnostics: FoldDiagnostic[] = [];
 let editorDiagnostics: FoldDiagnostic[] = [];
@@ -118,6 +146,9 @@ elements.foldPercent.addEventListener("input", updateFoldPercentLabel);
 elements.simulate.addEventListener("click", () => void simulate());
 elements.edgeAssignment.addEventListener("change", updateSelectedAssignment);
 elements.edgeAngle.addEventListener("change", updateSelectedAngle);
+elements.applyEdgeGeometry.addEventListener("click", applySelectedPlanarGeometry);
+elements.edgeHorizontal.addEventListener("click", () => setSelectedPlanarAngle(0));
+elements.edgeVertical.addEventListener("click", () => setSelectedPlanarAngle(90));
 elements.deleteEdge.addEventListener("click", deleteSelectedEdge);
 elements.resetExample.addEventListener("click", () => loadGraph(EXAMPLE));
 elements.importButton.addEventListener("click", () => elements.fileInput.click());
@@ -131,6 +162,14 @@ elements.snapToggle.addEventListener("click", toggleSnap);
 elements.gridSize.addEventListener("input", renderToolState);
 elements.mirrorVertical.addEventListener("click", () => mirrorWholePattern("vertical"));
 elements.mirrorHorizontal.addEventListener("click", () => mirrorWholePattern("horizontal"));
+elements.designFocusButton.addEventListener("click", toggleDesignFocus);
+elements.exactUsePointer.addEventListener("click", usePointerAsExactStart);
+elements.exactDrawButton.addEventListener("click", drawExactLine);
+elements.exactLength.addEventListener("keydown", drawExactOnEnter);
+elements.exactLineAngle.addEventListener("keydown", drawExactOnEnter);
+assignmentButtons.forEach((button) => {
+  button.addEventListener("click", () => setDrawAssignment(button.dataset.drawAssignment as EdgeAssignment));
+});
 document.addEventListener("keydown", handleKeyboardShortcut);
 
 loadGraph(EXAMPLE);
@@ -161,6 +200,7 @@ function loadGraph(input: FoldGraph): void {
   pendingVertex = -1;
   lastPointerPoint = undefined;
   activeTool = "select";
+  drawAssignment = "V";
   history.clear();
   autoGridForGraph();
   renderAll();
@@ -176,6 +216,7 @@ function renderAll(): void {
   renderToolState();
   renderHistory();
   renderPrecisionReadout(lastPointerPoint);
+  renderDesignFocus();
   elements.metric.textContent = "flat preview";
 }
 
@@ -189,6 +230,7 @@ function renderGraphState(): void {
   renderToolState();
   renderHistory();
   renderPrecisionReadout(lastPointerPoint);
+  renderDesignFocus();
   elements.metric.textContent = "flat preview";
 }
 
@@ -202,33 +244,33 @@ function handlePatternBackgroundClick(event: MouseEvent): void {
   handleCadPoint(point);
 }
 
-function handleCadPoint(rawPoint: Vec2): void {
+function handleCadPoint(rawPoint: Vec2, interactiveSnap = true): boolean {
   try {
     let precisionPoint = rawPoint;
-    if (pendingVertex >= 0 && snapEnabled) {
+    if (pendingVertex >= 0 && interactiveSnap && snapEnabled) {
       precisionPoint = angularSnapPoint(graph, pendingVertex, rawPoint).point;
     }
 
-    if (snapEnabled) {
+    if (interactiveSnap && snapEnabled) {
       const midpoint = findMidpointSnap(graph, precisionPoint, snapTolerance() * 0.72);
       if (midpoint) {
         handleEdgeSelect(midpoint.edgeIndex, midpoint.parameter);
-        return;
+        return true;
       }
     }
 
     const snap = snapPointToGraph(graph, precisionPoint, {
-      tolerance: snapEnabled ? snapTolerance() : 0,
-      gridEnabled: snapEnabled,
+      tolerance: interactiveSnap && snapEnabled ? snapTolerance() : snapTolerance() * 1e-6,
+      gridEnabled: interactiveSnap && snapEnabled,
       gridSize: currentGridSize(),
     });
     if (snap.kind === "vertex") {
       handleVertexSelect(snap.vertexIndex);
-      return;
+      return true;
     }
     if (snap.kind === "edge") {
       handleEdgeSelect(snap.edgeIndex, snap.parameter);
-      return;
+      return true;
     }
 
     const faceIndex = findContainingFace(graph, snap.point);
@@ -241,22 +283,30 @@ function handleCadPoint(rawPoint: Vec2): void {
         inserted.droppedOrderMetadata ? topologyMetadataDiagnostic() : undefined,
         inserted.vertexIndex,
       );
-      return;
+      return true;
     }
 
     const firstVertex = pendingVertex;
-    const traced = traceCreaseBetweenVertices(inserted.graph, firstVertex, inserted.vertexIndex, "V", 180);
+    const traced = traceCreaseBetweenVertices(
+      inserted.graph,
+      firstVertex,
+      inserted.vertexIndex,
+      drawAssignment,
+      currentDrawFoldAngle(),
+    );
     applyGraphEdit(
       traced.graph,
-      "Draw free crease",
+      `Draw ${assignmentName(drawAssignment).toLowerCase()} line`,
       traced.edgeIndices.at(-1) ?? -1,
       inserted.droppedOrderMetadata || traced.droppedOrderMetadata
         ? topologyMetadataDiagnostic()
         : undefined,
     );
+    return true;
   } catch (error) {
     addEditorDiagnostic(error, geometryCode(error));
     renderToolState();
+    return false;
   }
 }
 
@@ -280,10 +330,16 @@ function handleEdgeSelect(index: number, parameter: number): void {
       return;
     }
 
-    const traced = traceCreaseBetweenVertices(split.graph, firstVertex, split.vertexIndex, "V", 180);
+    const traced = traceCreaseBetweenVertices(
+      split.graph,
+      firstVertex,
+      split.vertexIndex,
+      drawAssignment,
+      currentDrawFoldAngle(),
+    );
     applyGraphEdit(
       traced.graph,
-      "Draw crease",
+      `Draw ${assignmentName(drawAssignment).toLowerCase()} line`,
       traced.edgeIndices.at(-1) ?? -1,
       split.droppedOrderMetadata || traced.droppedOrderMetadata
         ? topologyMetadataDiagnostic()
@@ -319,10 +375,16 @@ function handleVertexSelect(index: number): void {
   }
 
   try {
-    const result = traceCreaseBetweenVertices(graph, pendingVertex, index, "V", 180);
+    const result = traceCreaseBetweenVertices(
+      graph,
+      pendingVertex,
+      index,
+      drawAssignment,
+      currentDrawFoldAngle(),
+    );
     applyGraphEdit(
       result.graph,
-      "Draw crease",
+      `Draw ${assignmentName(drawAssignment).toLowerCase()} line`,
       result.edgeIndices.at(-1) ?? -1,
       result.droppedOrderMetadata ? topologyMetadataDiagnostic() : undefined,
     );
@@ -367,6 +429,13 @@ function setTool(tool: EditorTool): void {
   renderPrecisionReadout(lastPointerPoint);
 }
 
+function setDrawAssignment(assignment: EdgeAssignment): void {
+  if (!DRAW_ASSIGNMENTS.includes(assignment as (typeof DRAW_ASSIGNMENTS)[number])) return;
+  drawAssignment = assignment;
+  if (activeTool !== "crease") setTool("crease");
+  renderToolState();
+}
+
 function toggleSnap(): void {
   snapEnabled = !snapEnabled;
   renderToolState();
@@ -383,14 +452,27 @@ function renderToolState(): void {
   elements.patternStage.dataset.cadActive = String(activeTool === "crease");
   pattern.setInteraction(activeTool, pendingVertex);
   pattern.setGrid(currentGridSize(), activeTool === "crease" && snapEnabled);
+  renderDrawControls();
+  syncExactOriginFromPending();
 
   if (activeTool === "select") {
-    elements.toolHint.textContent = "Select an edge to edit it, or drag a vertex to move it safely.";
+    elements.toolHint.textContent = "Select an edge to dimension or classify it, or drag a vertex to move it safely.";
   } else if (pendingVertex < 0) {
-    elements.toolHint.textContent = "Crease CAD · click a vertex, edge, midpoint, or any free point to start.";
+    elements.toolHint.textContent = `${assignmentName(drawAssignment)} line · click a vertex, edge, midpoint, or free point to start.`;
   } else {
-    elements.toolHint.textContent = `Crease CAD · vertex ${pendingVertex} selected; 30°/45°/60°/90° guides and crossings snap automatically.`;
+    elements.toolHint.textContent = `${assignmentName(drawAssignment)} line · vertex ${pendingVertex} selected; click to finish, or enter length + angle and press Draw exact line.`;
   }
+}
+
+function renderDrawControls(): void {
+  elements.drawTypeLabel.textContent = assignmentName(drawAssignment);
+  elements.drawTypeLabel.dataset.assignment = drawAssignment;
+  elements.drawFoldAngle.disabled = drawAssignment !== "V" && drawAssignment !== "M";
+  assignmentButtons.forEach((button) => {
+    const active = button.dataset.drawAssignment === drawAssignment;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
 }
 
 function renderSelection(): void {
@@ -398,8 +480,13 @@ function renderSelection(): void {
   elements.selectionEmpty.hidden = hasSelection;
   elements.edgeControls.hidden = !hasSelection;
   elements.deleteEdge.disabled = !hasSelection || !isInternalEdge(selectedEdge);
+  elements.applyEdgeGeometry.disabled = !hasSelection;
+  elements.edgeHorizontal.disabled = !hasSelection;
+  elements.edgeVertical.disabled = !hasSelection;
   if (!hasSelection) {
     elements.edgeMetrics.textContent = "";
+    elements.edgePlanarLength.value = "";
+    elements.edgePlanarAngle.value = "";
     return;
   }
 
@@ -411,6 +498,8 @@ function renderSelection(): void {
   elements.edgeMetrics.textContent = measured
     ? `Length ${formatLength(measured.length)} · planar angle ${formatAngle(measured.angleDegrees)}`
     : "";
+  elements.edgePlanarLength.value = measured ? formatInputNumber(measured.length) : "";
+  elements.edgePlanarAngle.value = measured ? formatInputNumber(measured.angleDegrees) : "";
 }
 
 function renderPrecisionReadout(point: Vec2 | undefined): void {
@@ -426,13 +515,77 @@ function renderPrecisionReadout(point: Vec2 | undefined): void {
   if (pendingVertex >= 0) {
     const origin = projectVertices2D(graph.vertices_coords ?? [])[pendingVertex];
     if (origin) {
-      const snapped = snapEnabled ? angularSnapPoint(graph, pendingVertex, point) : { point, angleDegrees: pointMeasurement(origin, point).angleDegrees, snapped: false };
+      const snapped = snapEnabled
+        ? angularSnapPoint(graph, pendingVertex, point)
+        : { point, angleDegrees: pointMeasurement(origin, point).angleDegrees, snapped: false };
       const measured = pointMeasurement(origin, snapped.point);
-      label = `L ${formatNumber(measured.length)}${units} · θ ${formatAngle(measured.angleDegrees)} · x ${formatNumber(snapped.point[0])}${units} · y ${formatNumber(snapped.point[1])}${units}`;
+      label = `${assignmentName(drawAssignment)} · L ${formatNumber(measured.length)}${units} · θ ${formatAngle(measured.angleDegrees)} · x ${formatNumber(snapped.point[0])}${units} · y ${formatNumber(snapped.point[1])}${units}`;
       if (snapped.snapped) label += " · angle snap";
     }
   }
   elements.precisionReadout.textContent = label;
+}
+
+function usePointerAsExactStart(): void {
+  if (!lastPointerPoint) {
+    elements.toolHint.textContent = "Move the pointer over the paper first, then choose Use cursor as start.";
+    return;
+  }
+  elements.exactStartX.value = formatInputNumber(lastPointerPoint[0]);
+  elements.exactStartY.value = formatInputNumber(lastPointerPoint[1]);
+}
+
+function syncExactOriginFromPending(): void {
+  if (pendingVertex < 0) return;
+  const origin = projectVertices2D(graph.vertices_coords ?? [])[pendingVertex];
+  if (!origin) return;
+  elements.exactStartX.value = formatInputNumber(origin[0]);
+  elements.exactStartY.value = formatInputNumber(origin[1]);
+}
+
+function drawExactOnEnter(event: KeyboardEvent): void {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  drawExactLine();
+}
+
+function drawExactLine(): void {
+  try {
+    const length = Number(elements.exactLength.value);
+    const angle = Number(elements.exactLineAngle.value);
+    if (!Number.isFinite(length) || length <= 0) {
+      throw new GeometryEditError("invalid-line-length", "Exact line length must be greater than zero.");
+    }
+    if (!Number.isFinite(angle)) {
+      throw new GeometryEditError("invalid-line-angle", "Exact line angle must be a finite number.");
+    }
+
+    if (activeTool !== "crease") setTool("crease");
+
+    let origin: Vec2 | undefined;
+    if (pendingVertex >= 0) {
+      origin = projectVertices2D(graph.vertices_coords ?? [])[pendingVertex];
+    } else {
+      const x = Number(elements.exactStartX.value);
+      const y = Number(elements.exactStartY.value);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new GeometryEditError("invalid-line-origin", "Exact line X and Y must be finite numbers.");
+      }
+      if (!handleCadPoint([x, y], false) || pendingVertex < 0) {
+        throw new GeometryEditError("invalid-line-origin", "The exact line start must lie on or inside the paper.");
+      }
+      origin = projectVertices2D(graph.vertices_coords ?? [])[pendingVertex];
+    }
+
+    if (!origin) throw new GeometryEditError("invalid-line-origin", "Unable to resolve the exact line origin.");
+    const endpoint = pointFromLengthAngle(origin, length, angle);
+    const completed = handleCadPoint(endpoint, false);
+    if (completed && pendingVertex < 0) {
+      elements.toolHint.textContent = `${assignmentName(drawAssignment)} exact line · ${formatNumber(length)}${displayUnits()} at ${formatAngle(angle)}.`;
+    }
+  } catch (error) {
+    addEditorDiagnostic(error, geometryCode(error));
+  }
 }
 
 function updateSelectedAssignment(): void {
@@ -463,6 +616,25 @@ function updateSelectedAngle(): void {
   applyGraphEdit(next, "Change crease angle", selectedEdge);
 }
 
+function applySelectedPlanarGeometry(): void {
+  if (selectedEdge < 0) return;
+  try {
+    const length = Number(elements.edgePlanarLength.value);
+    const angle = Number(elements.edgePlanarAngle.value);
+    const next = retargetEdgeFromFirstVertex(graph, selectedEdge, length, angle);
+    applyGraphEdit(next, "Apply smart dimension", selectedEdge);
+    elements.toolHint.textContent = `Edge ${selectedEdge} dimensioned to ${formatNumber(length)}${displayUnits()} at ${formatAngle(angle)}.`;
+  } catch (error) {
+    addEditorDiagnostic(error, geometryCode(error));
+  }
+}
+
+function setSelectedPlanarAngle(angle: number): void {
+  if (selectedEdge < 0) return;
+  elements.edgePlanarAngle.value = String(angle);
+  applySelectedPlanarGeometry();
+}
+
 function deleteSelectedEdge(): void {
   if (selectedEdge < 0) return;
   try {
@@ -485,6 +657,19 @@ function mirrorWholePattern(axis: "horizontal" | "vertical"): void {
   } catch (error) {
     addEditorDiagnostic(error, geometryCode(error));
   }
+}
+
+function toggleDesignFocus(): void {
+  designFocus = !designFocus;
+  renderDesignFocus();
+  window.setTimeout(() => window.dispatchEvent(new Event("resize")), 0);
+}
+
+function renderDesignFocus(): void {
+  elements.workspace.classList.toggle("design-focus", designFocus);
+  elements.designFocusButton.classList.toggle("active", designFocus);
+  elements.designFocusButton.setAttribute("aria-pressed", String(designFocus));
+  elements.designFocusButton.textContent = designFocus ? "Show 3D" : "Focus design";
 }
 
 function applyGraphEdit(
@@ -533,13 +718,26 @@ function renderHistory(): void {
 }
 
 function handleKeyboardShortcut(event: KeyboardEvent): void {
-  if (event.key === "Escape" && activeTool === "crease" && !isTextEditingTarget(event.target)) {
+  if (isTextEditingTarget(event.target)) return;
+  if (event.key === "Escape" && activeTool === "crease") {
     pendingVertex = -1;
     renderToolState();
     renderPrecisionReadout(lastPointerPoint);
     return;
   }
-  if (!(event.ctrlKey || event.metaKey) || isTextEditingTarget(event.target)) return;
+
+  if (!(event.ctrlKey || event.metaKey)) {
+    const key = event.key.toLowerCase();
+    if (key === "s") setTool("select");
+    else if (key === "l") setTool("crease");
+    else if (key === "v") setDrawAssignment("V");
+    else if (key === "m") setDrawAssignment("M");
+    else if (key === "f") setDrawAssignment("F");
+    else if (key === "c") setDrawAssignment("C");
+    else if (key === "u") setDrawAssignment("U");
+    return;
+  }
+
   const key = event.key.toLowerCase();
   if (key === "z" && event.shiftKey) {
     event.preventDefault();
@@ -555,7 +753,14 @@ function handleKeyboardShortcut(event: KeyboardEvent): void {
 
 function renderDiagnostics(): void {
   const validation = validateFoldForSimulation(graph);
-  const diagnostics = [...sourceDiagnostics, ...editorDiagnostics, ...validation.diagnostics];
+  const cutDiagnostics: FoldDiagnostic[] = graph.edges_assignment.includes("C")
+    ? [{
+        severity: "warning",
+        code: "cut-edge-preview",
+        message: "Cut lines are preserved in FOLD/export. The legacy 3D solver does not model physical sheet separation.",
+      }]
+    : [];
+  const diagnostics = [...sourceDiagnostics, ...editorDiagnostics, ...cutDiagnostics, ...validation.diagnostics];
   elements.diagnostics.replaceChildren();
 
   if (diagnostics.length === 0) {
@@ -593,6 +798,8 @@ function renderStats(): void {
     ["Faces", graph.faces_vertices?.length ?? 0],
     ["Mountains", graph.edges_assignment.filter((value) => value === "M").length],
     ["Valleys", graph.edges_assignment.filter((value) => value === "V").length],
+    ["Cuts", graph.edges_assignment.filter((value) => value === "C").length],
+    ["Hinges", graph.edges_assignment.filter((value) => value === "U").length],
     ["CAD topology", auxiliary],
   ];
   elements.modelStats.replaceChildren();
@@ -745,6 +952,11 @@ function currentGridSize(): number {
   return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
+function currentDrawFoldAngle(): number {
+  const value = Number(elements.drawFoldAngle.value);
+  return foldAngleForAssignment(drawAssignment, value);
+}
+
 function autoGridForGraph(): void {
   const points = projectVertices2D(graph.vertices_coords ?? []);
   if (points.length === 0) return;
@@ -774,6 +986,10 @@ function formatNumber(value: number): string {
   const magnitude = Math.abs(value);
   const digits = magnitude >= 100 ? 1 : magnitude >= 10 ? 2 : 3;
   return Number(value.toFixed(digits)).toString();
+}
+
+function formatInputNumber(value: number): string {
+  return Number(value.toFixed(6)).toString();
 }
 
 function formatLength(value: number): string {
