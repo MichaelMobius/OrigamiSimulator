@@ -1,0 +1,106 @@
+.geometry-first-draw .assignment-palette,
+.geometry-first-draw .compact-field,
+.geometry-first-draw .draw-type-badge {
+  display: none !important;
+}
+
+.geometry-first-draw .sketch-section-row {
+  margin-bottom: 6px;
+}
+
+.geometry-workflow {
+  display: grid;
+  gap: 5px;
+  margin: 2px 0 12px;
+  padding: 9px;
+  border: 1px solid rgba(17, 17, 17, 0.10);
+  border-radius: 9px;
+  background: rgba(17, 17, 17, 0.035);
+  color: #696760;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.geometry-workflow span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.geometry-workflow b {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #171717;
+  color: #fff;
+  font: 700 9px/1 "DM Mono", ui-monospace, monospace;
+}
+
+.selection-assignment-panel {
+  margin: 8px 0 12px;
+  padding: 10px;
+  border: 1px solid rgba(17, 17, 17, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.selection-type-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.selection-type-title {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.selected-type-badge {
+  flex: 0 0 auto;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.selection-assignment-palette {
+  margin: 9px 0 0;
+}
+
+.selection-assignment-palette .assignment-button.hinge i {
+  background: #62615d;
+}
+
+.selection-color-note {
+  margin-top: 7px;
+}
+
+.advanced-assignment-field {
+  margin-top: 10px;
+  opacity: .78;
+}
+
+/* In geometry-first mode U means unclassified sketch geometry, so keep it neutral. */
+.pattern-edge[stroke="#d56cff"] {
+  stroke: #696863 !important;
+}
+
+.pattern-edge[stroke="#d56cff"].selected {
+  stroke: #171717 !important;
+}
+
+.legend .swatch.hinge {
+  background: #696863 !important;
+}
+
+@media (max-width: 900px) {
+  .selection-assignment-palette {
+    grid-template-columns: repeat(5, minmax(44px, 1fr));
+  }
+
+  .geometry-workflow {
+    font-size: 9px;
+  }
+}
