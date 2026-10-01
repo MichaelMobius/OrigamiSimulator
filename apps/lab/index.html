@@ -21,6 +21,7 @@
         </div>
         <div class="top-actions">
           <span id="runtime-status" class="runtime-status pending">Starting legacy solver…</span>
+          <button id="design-focus-button" class="button ghost focus-action" type="button" aria-pressed="false">Focus design</button>
           <button id="undo-button" class="button ghost" type="button" disabled>Undo</button>
           <button id="redo-button" class="button ghost" type="button" disabled>Redo</button>
           <button id="new-pattern-button" class="button designer-action" type="button">New Pattern</button>
@@ -31,7 +32,7 @@
         </div>
       </header>
 
-      <main class="workspace">
+      <main id="workspace" class="workspace">
         <section class="pane pattern-pane">
           <div class="pane-header">
             <div>
@@ -40,7 +41,7 @@
             </div>
             <div class="header-tools cad-toolbar">
               <button id="select-tool" class="tool-button active" type="button" aria-pressed="true">Select</button>
-              <button id="crease-tool" class="tool-button" type="button" aria-pressed="false">+ Crease</button>
+              <button id="crease-tool" class="tool-button" type="button" aria-pressed="false">+ Line</button>
               <button id="snap-toggle" class="tool-button active" type="button" aria-pressed="true" title="Snap to vertices, edge midpoints, edges, precision angles and grid">Snap</button>
               <label class="grid-control" title="Grid spacing">
                 <span>Grid</span>
@@ -59,6 +60,8 @@
             <span><i class="swatch mountain"></i>Mountain</span>
             <span><i class="swatch valley"></i>Valley</span>
             <span><i class="swatch flat"></i>Flat</span>
+            <span><i class="swatch cut"></i>Cut</span>
+            <span><i class="swatch hinge"></i>Hinge</span>
             <span><i class="swatch boundary"></i>Boundary</span>
             <span class="legend-aux"><i class="swatch auxiliary"></i>CAD topology</span>
           </div>
@@ -81,12 +84,58 @@
         </section>
 
         <aside class="inspector">
+          <section class="inspector-section sketch-draw-section">
+            <div class="section-row sketch-section-row">
+              <span class="eyebrow">DRAW LINE</span>
+              <span id="draw-type-label" class="badge draw-type-badge">Valley</span>
+            </div>
+
+            <div class="assignment-palette" role="group" aria-label="Type for new fold lines">
+              <button class="assignment-button valley active" type="button" data-draw-assignment="V" aria-pressed="true" title="Draw valley folds"><i></i><span>V</span><small>Valley</small></button>
+              <button class="assignment-button mountain" type="button" data-draw-assignment="M" aria-pressed="false" title="Draw mountain folds"><i></i><span>M</span><small>Mountain</small></button>
+              <button class="assignment-button flat" type="button" data-draw-assignment="F" aria-pressed="false" title="Draw flat facet lines"><i></i><span>F</span><small>Flat</small></button>
+              <button class="assignment-button cut" type="button" data-draw-assignment="C" aria-pressed="false" title="Draw cut lines"><i></i><span>C</span><small>Cut</small></button>
+              <button class="assignment-button hinge" type="button" data-draw-assignment="U" aria-pressed="false" title="Draw unassigned hinges"><i></i><span>U</span><small>Hinge</small></button>
+            </div>
+
+            <label class="field compact-field">
+              <span>Fold magnitude for V / M</span>
+              <div class="number-with-unit"><input id="draw-fold-angle" type="number" min="0" max="180" step="1" value="180" /><span>°</span></div>
+            </label>
+
+            <div class="sketch-subhead">Exact line</div>
+            <div class="exact-grid origin-grid">
+              <label class="mini-field"><span>Start X</span><input id="exact-start-x" type="number" step="0.1" value="0" /></label>
+              <label class="mini-field"><span>Start Y</span><input id="exact-start-y" type="number" step="0.1" value="0" /></label>
+            </div>
+            <button id="exact-use-pointer" class="button ghost compact-button" type="button">Use cursor as start</button>
+            <div class="exact-grid">
+              <label class="mini-field"><span>Length</span><input id="exact-length" type="number" min="0.000001" step="0.1" value="100" /></label>
+              <label class="mini-field"><span>Angle</span><div class="number-with-unit"><input id="exact-line-angle" type="number" step="1" value="0" /><span>°</span></div></label>
+            </div>
+            <button id="exact-draw-button" class="button primary wide exact-draw-button" type="button">Draw exact line</button>
+            <p class="sketch-note">Click a start point on the sheet, or enter X/Y. Exact lines use the selected V/M/F/C/U type and automatically split intersections.</p>
+          </section>
+
           <section class="inspector-section">
             <span class="eyebrow">SELECTION</span>
             <div id="selection-empty" class="muted-block">Select an edge in the pattern.</div>
             <div id="edge-controls" hidden>
               <div class="selection-title">Edge <strong id="edge-index">0</strong></div>
               <div id="edge-metrics" class="precision-metrics"></div>
+
+              <div class="sketch-subhead">Smart dimension</div>
+              <div class="exact-grid">
+                <label class="mini-field"><span>Length</span><input id="edge-planar-length" type="number" min="0.000001" step="0.1" /></label>
+                <label class="mini-field"><span>Planar angle</span><div class="number-with-unit"><input id="edge-planar-angle" type="number" step="1" /><span>°</span></div></label>
+              </div>
+              <div class="dimension-actions">
+                <button id="edge-horizontal" class="button ghost" type="button">Horizontal</button>
+                <button id="edge-vertical" class="button ghost" type="button">Vertical</button>
+                <button id="apply-edge-geometry" class="button ghost" type="button">Apply dimension</button>
+              </div>
+              <p class="sketch-note">Dimensions keep the first endpoint fixed and move the second endpoint together with its connected geometry.</p>
+
               <label class="field">
                 <span>Assignment</span>
                 <select id="edge-assignment">
@@ -100,7 +149,7 @@
                 </select>
               </label>
               <label class="field">
-                <span>Target angle</span>
+                <span>Target fold angle</span>
                 <div class="number-with-unit"><input id="edge-angle" type="number" min="-180" max="180" step="1" /><span>°</span></div>
               </label>
               <button id="delete-edge-button" class="button danger wide" type="button">Delete internal crease</button>
@@ -168,7 +217,7 @@
             </label>
           </div>
 
-          <p class="designer-note">The new sheet starts with four boundary edges. Use <strong>+ Crease</strong> and click anywhere on the sheet: free points, edges and crossings are converted into valid FOLD topology automatically.</p>
+          <p class="designer-note">The new sheet starts with four boundary edges. Choose Valley, Mountain, Flat, Cut or Hinge before drawing. Use <strong>+ Line</strong> for direct sketching or the exact-line controls for numerical construction; free points, edge splits and crossings become valid FOLD topology automatically.</p>
           <div id="new-pattern-error" class="dialog-error" role="alert"></div>
 
           <div class="dialog-actions">
