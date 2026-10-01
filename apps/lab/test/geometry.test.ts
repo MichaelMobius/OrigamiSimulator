@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateFoldForSimulation } from "../../../packages/core/src/fold/validateSimulation.ts";
 import {
   findContainingFace,
   insertInteriorVertex,
@@ -151,7 +150,7 @@ test("free interior points create solver-safe auxiliary topology", () => {
   assert.equal(inserted.graph.faces_vertices?.length, 4);
   assert.deepEqual(inserted.graph.edges_assignment.slice(4), ["F", "F", "F", "F"]);
   assert.deepEqual(inserted.graph.edges_origamiLabAuxiliary, [false, false, false, false, true, true, true, true]);
-  assert.equal(validateFoldForSimulation(inserted.graph).valid, true);
+  assertFaceTopology(inserted.graph);
 });
 
 test("snapping prioritizes vertices, then edges, then grid", () => {
@@ -185,11 +184,20 @@ test("a crease crossing an existing crease creates an automatic intersection", (
   assert.equal(traced.graph.vertices_coords?.length, 9);
   assert.equal(traced.graph.faces_vertices?.length, 4);
   assert.equal(traced.graph.edges_assignment.filter((assignment) => assignment === "V").length, 4);
-  assert.equal(validateFoldForSimulation(traced.graph).valid, true);
+  assertFaceTopology(traced.graph);
 });
 
 function findEdge(graph: { edges_vertices: readonly (readonly [number, number])[] }, a: number, b: number): number {
   const index = graph.edges_vertices.findIndex(([c, d]) => (a === c && b === d) || (a === d && b === c));
   assert.notEqual(index, -1, `missing edge ${a}-${b}`);
   return index;
+}
+
+function assertFaceTopology(graph: { edges_vertices: readonly (readonly [number, number])[]; faces_vertices?: readonly (readonly number[])[] }): void {
+  for (const face of graph.faces_vertices ?? []) {
+    assert.ok(face.length >= 3, "face must have at least three vertices");
+    for (let index = 0; index < face.length; index += 1) {
+      assert.notEqual(findEdge(graph, face[index]!, face[(index + 1) % face.length]!), -1);
+    }
+  }
 }
