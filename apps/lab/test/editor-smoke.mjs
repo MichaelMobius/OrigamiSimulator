@@ -52,30 +52,37 @@ try {
   assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
   assert.equal(await page.locator(".pattern-vertex-hit").first().getAttribute("fill"), "none");
 
-  // Pattern Designer: create a completely new blank sheet, then draw a crease
-  // between two arbitrary points on opposite boundary edges.
-  await page.locator("#new-pattern-button").click();
-  assert.equal(await page.locator("#new-pattern-dialog").evaluate((element) => element.open), true);
-  await page.locator("#pattern-title").fill("Designer smoke");
-  await page.locator("#paper-preset").selectOption("custom");
-  await page.locator("#paper-width").fill("200");
-  await page.locator("#paper-height").fill("140");
-  await page.locator("#new-pattern-form button[type='submit']").click();
-  await page.waitForFunction(() => document.querySelectorAll(".pattern-edge").length === 4);
-  assert.equal(await page.locator(".pattern-vertex").count(), 4);
-  assert.match(await page.locator("#model-stats").innerText(), /Faces\s+1/);
+  // CAD scenario 1: start a new sheet and create a crease from a free interior point.
+  await createCustomSheet(page, "Free point smoke", 200, 140);
+  await page.locator("#crease-tool").click();
+  assert.equal(await page.locator("#snap-toggle").getAttribute("aria-pressed"), "true");
+  assert.ok((await page.locator(".pattern-grid line").count()) > 0, "CAD grid should be visible");
+  await clickSvgPoint(page, 100, 70);
+  assert.equal(await page.locator(".pattern-vertex").count(), 5);
+  assert.equal(await page.locator(".pattern-vertex.pending").count(), 1);
+  assert.equal(await page.locator(".pattern-edge.auxiliary").count(), 4);
+  assert.match(await page.locator("#model-stats").innerText(), /CAD topology\s+4/);
+  await page.locator(".pattern-vertex").nth(0).click();
+  assert.equal(await page.locator(".pattern-vertex.pending").count(), 0);
+  assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+1/);
   assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
 
+  // CAD scenario 2: two full-sheet creases cross. The second one must split the
+  // first crease and create one explicit intersection vertex automatically.
+  await createCustomSheet(page, "Intersection smoke", 200, 140);
   await page.locator("#crease-tool").click();
-  await clickEdgeMidpoint(page, 0);
-  assert.equal(await page.locator(".pattern-vertex.pending").count(), 1);
-  assert.equal(await page.locator(".pattern-vertex").count(), 5);
-  assert.equal(await page.locator(".pattern-edge").count(), 5);
-  await clickEdgeMidpoint(page, 3);
+  await clickEdgeAtConstant(page, "y", 0);
+  await clickEdgeAtConstant(page, "y", 140);
   await page.waitForFunction(() => document.querySelectorAll(".pattern-edge").length === 7);
   assert.equal(await page.locator(".pattern-vertex").count(), 6);
   assert.match(await page.locator("#model-stats").innerText(), /Faces\s+2/);
-  assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+1/);
+
+  await clickEdgeAtConstant(page, "x", 0);
+  await clickEdgeAtConstant(page, "x", 200);
+  await page.waitForFunction(() => document.querySelectorAll(".pattern-vertex").length === 9);
+  assert.equal(await page.locator(".pattern-edge").count(), 12);
+  assert.match(await page.locator("#model-stats").innerText(), /Faces\s+4/);
+  assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+4/);
   assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
 
   // Restore the canonical fixture for the existing editor and solver regression flow.
@@ -154,12 +161,13 @@ try {
     `${JSON.stringify({
       baseUrl,
       metric,
-      patternEdges: 5,
+      version: "0.6.0",
       newPatternDesigner: true,
-      blankSheetCreaseDrawing: true,
+      freePointDrawing: true,
+      snappingAndGrid: true,
+      automaticIntersections: true,
       compactVertexSelection: true,
       svgSelectionFiltersDisabled: true,
-      edgeVertexInsertion: true,
       geometryEditing: true,
       undoRedo: true,
       assignmentMagnitudePreserved: true,
@@ -168,9 +176,61 @@ try {
       badResponses,
     }, null, 2)}\n`,
   );
-  console.log(`Origami Lab v0.5 smoke test passed at ${baseUrl}: ${metric}`);
+  console.log(`Origami Lab v0.6 smoke test passed at ${baseUrl}: ${metric}`);
 } finally {
   await browser.close();
+}
+
+async function createCustomSheet(page, title, width, height) {
+  await page.locator("#new-pattern-button").click();
+  assert.equal(await page.locator("#new-pattern-dialog").evaluate((element) => element.open), true);
+  await page.locator("#pattern-title").fill(title);
+  await page.locator("#paper-preset").selectOption("custom");
+  await page.locator("#paper-width").fill(String(width));
+  await page.locator("#paper-height").fill(String(height));
+  await page.locator("#new-pattern-form button[type='submit']").click();
+  await page.waitForFunction(() => document.querySelectorAll(".pattern-edge").length === 4);
+  assert.equal(await page.locator(".pattern-vertex").count(), 4);
+  assert.match(await page.locator("#model-stats").innerText(), /Faces\s+1/);
+  assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
+}
+
+async function clickSvgPoint(page, x, y) {
+  await page.locator("#pattern-svg").evaluate((svg, point) => {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) throw new Error("SVG transform unavailable");
+    const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+    svg.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      clientX: screen.x,
+      clientY: screen.y,
+    }));
+  }, { x, y });
+}
+
+async function clickEdgeAtConstant(page, axis, value) {
+  await page.locator(".pattern-edge").evaluateAll((lines, spec) => {
+    const first = spec.axis === "x" ? "x1" : "y1";
+    const second = spec.axis === "x" ? "x2" : "y2";
+    const line = lines.find((candidate) =>
+      Math.abs(Number(candidate.getAttribute(first)) - spec.value) < 1e-6 &&
+      Math.abs(Number(candidate.getAttribute(second)) - spec.value) < 1e-6,
+    );
+    if (!line) throw new Error(`Unable to find boundary edge at ${spec.axis}=${spec.value}`);
+    const svg = line.ownerSVGElement;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) throw new Error("SVG transform unavailable");
+    const x1 = Number(line.getAttribute("x1"));
+    const y1 = Number(line.getAttribute("y1"));
+    const x2 = Number(line.getAttribute("x2"));
+    const y2 = Number(line.getAttribute("y2"));
+    const midpoint = new DOMPoint((x1 + x2) / 2, (y1 + y2) / 2).matrixTransform(matrix);
+    line.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      clientX: midpoint.x,
+      clientY: midpoint.y,
+    }));
+  }, { axis, value });
 }
 
 async function clickEdgeMidpoint(page, index) {

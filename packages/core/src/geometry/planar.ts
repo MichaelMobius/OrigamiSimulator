@@ -3,6 +3,12 @@ import type { Vertex } from "../fold/types.js";
 export type Vec2 = readonly [number, number];
 export type ProjectionAxes = readonly [0 | 1 | 2, 0 | 1 | 2];
 
+export interface SegmentIntersection {
+  point: Vec2;
+  t: number;
+  u: number;
+}
+
 const EPSILON = 1e-9;
 
 export function chooseProjectionAxes(vertices: readonly Vertex[]): ProjectionAxes {
@@ -161,11 +167,11 @@ export function edgeKey(a: number, b: number): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`;
 }
 
-function orient2d(a: Vec2, b: Vec2, c: Vec2): number {
+export function orient2d(a: Vec2, b: Vec2, c: Vec2): number {
   return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
 }
 
-function pointOnSegment(point: Vec2, a: Vec2, b: Vec2): boolean {
+export function pointOnSegment(point: Vec2, a: Vec2, b: Vec2): boolean {
   if (Math.abs(orient2d(a, b, point)) > EPSILON) return false;
   return (
     point[0] >= Math.min(a[0], b[0]) - EPSILON &&
@@ -175,7 +181,7 @@ function pointOnSegment(point: Vec2, a: Vec2, b: Vec2): boolean {
   );
 }
 
-function segmentsIntersect(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
+export function segmentsIntersect(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
   const o1 = orient2d(a, b, c);
   const o2 = orient2d(a, b, d);
   const o3 = orient2d(c, d, a);
@@ -194,7 +200,30 @@ function segmentsIntersect(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
   );
 }
 
-function pointInPolygon(point: Vec2, polygon: readonly Vec2[]): boolean {
+export function segmentIntersectionParameters(a: Vec2, b: Vec2, c: Vec2, d: Vec2): SegmentIntersection | undefined {
+  const rx = b[0] - a[0];
+  const ry = b[1] - a[1];
+  const sx = d[0] - c[0];
+  const sy = d[1] - c[1];
+  const denominator = rx * sy - ry * sx;
+  if (Math.abs(denominator) <= EPSILON) return undefined;
+
+  const qpx = c[0] - a[0];
+  const qpy = c[1] - a[1];
+  const t = (qpx * sy - qpy * sx) / denominator;
+  const u = (qpx * ry - qpy * rx) / denominator;
+  if (t < -EPSILON || t > 1 + EPSILON || u < -EPSILON || u > 1 + EPSILON) return undefined;
+
+  const clampedT = Math.max(0, Math.min(1, t));
+  const clampedU = Math.max(0, Math.min(1, u));
+  return {
+    point: [a[0] + clampedT * rx, a[1] + clampedT * ry],
+    t: clampedT,
+    u: clampedU,
+  };
+}
+
+export function pointInPolygon(point: Vec2, polygon: readonly Vec2[]): boolean {
   for (let index = 0; index < polygon.length; index += 1) {
     if (pointOnSegment(point, polygon[index]!, polygon[(index + 1) % polygon.length]!)) return true;
   }
@@ -210,7 +239,7 @@ function pointInPolygon(point: Vec2, polygon: readonly Vec2[]): boolean {
   return inside;
 }
 
-function pointInTriangle(point: Vec2, a: Vec2, b: Vec2, c: Vec2): boolean {
+export function pointInTriangle(point: Vec2, a: Vec2, b: Vec2, c: Vec2): boolean {
   const o1 = orient2d(a, b, point);
   const o2 = orient2d(b, c, point);
   const o3 = orient2d(c, a, point);
