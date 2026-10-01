@@ -81,9 +81,13 @@ export class PatternView {
     if (!graph || vertices.length === 0) return;
 
     svg.dataset.tool = this.tool;
-    const points = projectVertices2D(vertices);
+    // Keep the coordinate transform stable during a drag. The viewBox is derived
+    // from committed geometry only; the temporary drag preview may extend beyond
+    // it, but must not change SVG↔screen mapping mid-gesture.
+    const committedPoints = projectVertices2D(vertices);
+    const bounds = calculateBounds(committedPoints);
+    const points = committedPoints.map(([x, y]) => [x, y] as Vec2);
     if (this.dragVertex >= 0 && this.dragPreview) points[this.dragVertex] = this.dragPreview;
-    const bounds = calculateBounds(points);
     const span = Math.max(bounds.width, bounds.height, 1);
     const padding = span * 0.12;
     svg.setAttribute(
