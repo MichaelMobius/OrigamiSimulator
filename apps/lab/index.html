@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#111111" />
     <title>Origami Lab</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/designer.css" />
   </head>
   <body>
     <div id="app">
@@ -21,6 +22,7 @@
           <span id="runtime-status" class="runtime-status pending">Starting legacy solver…</span>
           <button id="undo-button" class="button ghost" type="button" disabled>Undo</button>
           <button id="redo-button" class="button ghost" type="button" disabled>Redo</button>
+          <button id="new-pattern-button" class="button designer-action" type="button">New Pattern</button>
           <a class="button ghost" href="../../index.html" target="_blank" rel="noreferrer">Original simulator</a>
           <button id="import-button" class="button ghost" type="button">Import FOLD</button>
           <button id="export-button" class="button ghost" type="button">Export FOLD</button>
@@ -32,13 +34,13 @@
         <section class="pane pattern-pane">
           <div class="pane-header">
             <div>
-              <span class="eyebrow">01 · CREASE PATTERN</span>
-              <h1>Pattern editor</h1>
+              <span class="eyebrow">01 · PATTERN DESIGNER</span>
+              <h1>Crease pattern editor</h1>
             </div>
             <div class="header-tools">
               <button id="select-tool" class="tool-button active" type="button" aria-pressed="true">Select</button>
               <button id="crease-tool" class="tool-button" type="button" aria-pressed="false">+ Crease</button>
-              <button id="reset-example" class="icon-button" type="button" title="Reset example">↺</button>
+              <button id="reset-example" class="icon-button" type="button" title="Load example pattern">↺</button>
             </div>
           </div>
           <div id="pattern-stage" class="pattern-stage">
@@ -111,6 +113,53 @@
         </aside>
       </main>
 
+      <dialog id="new-pattern-dialog" class="new-pattern-dialog" aria-labelledby="new-pattern-title">
+        <form id="new-pattern-form" class="new-pattern-form">
+          <div class="dialog-heading">
+            <div>
+              <span class="eyebrow">NEW CREASE PATTERN</span>
+              <h2 id="new-pattern-title">Start from a blank sheet</h2>
+            </div>
+            <button id="new-pattern-cancel" class="dialog-close" type="button" aria-label="Close">×</button>
+          </div>
+
+          <label class="field">
+            <span>Pattern name</span>
+            <input id="pattern-title" type="text" value="Untitled pattern" maxlength="120" autocomplete="off" />
+          </label>
+
+          <label class="field">
+            <span>Paper preset</span>
+            <select id="paper-preset">
+              <option value="square">Square · 210 × 210 mm</option>
+              <option value="a4p">A4 portrait · 210 × 297 mm</option>
+              <option value="a4l">A4 landscape · 297 × 210 mm</option>
+              <option value="letterp">Letter portrait · 215.9 × 279.4 mm</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+
+          <div class="paper-dimensions">
+            <label class="field">
+              <span>Width (mm)</span>
+              <input id="paper-width" type="number" min="1" max="10000" step="0.1" value="210" required />
+            </label>
+            <label class="field">
+              <span>Height (mm)</span>
+              <input id="paper-height" type="number" min="1" max="10000" step="0.1" value="210" required />
+            </label>
+          </div>
+
+          <p class="designer-note">The new sheet starts with four boundary edges. Use <strong>+ Crease</strong> and click two vertices or two points on edges to design the folding pattern.</p>
+          <div id="new-pattern-error" class="dialog-error" role="alert"></div>
+
+          <div class="dialog-actions">
+            <button id="new-pattern-cancel-secondary" class="button ghost" type="button" onclick="document.getElementById('new-pattern-dialog').close()">Cancel</button>
+            <button class="button primary" type="submit">Create blank sheet</button>
+          </div>
+        </form>
+      </dialog>
+
       <iframe
         id="legacy-runtime"
         class="legacy-runtime"
@@ -121,5 +170,6 @@
       ></iframe>
     </div>
     <script type="module" src="./src/main.ts"></script>
+    <script type="module" src="./src/newPattern.ts"></script>
   </body>
 </html>

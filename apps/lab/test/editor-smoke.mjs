@@ -52,6 +52,36 @@ try {
   assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
   assert.equal(await page.locator(".pattern-vertex-hit").first().getAttribute("fill"), "none");
 
+  // Pattern Designer: create a completely new blank sheet, then draw a crease
+  // between two arbitrary points on opposite boundary edges.
+  await page.locator("#new-pattern-button").click();
+  assert.equal(await page.locator("#new-pattern-dialog").evaluate((element) => element.open), true);
+  await page.locator("#pattern-title").fill("Designer smoke");
+  await page.locator("#paper-preset").selectOption("custom");
+  await page.locator("#paper-width").fill("200");
+  await page.locator("#paper-height").fill("140");
+  await page.locator("#new-pattern-form button[type='submit']").click();
+  await page.waitForFunction(() => document.querySelectorAll(".pattern-edge").length === 4);
+  assert.equal(await page.locator(".pattern-vertex").count(), 4);
+  assert.match(await page.locator("#model-stats").innerText(), /Faces\s+1/);
+  assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
+
+  await page.locator("#crease-tool").click();
+  await clickEdgeMidpoint(page, 0);
+  assert.equal(await page.locator(".pattern-vertex.pending").count(), 1);
+  assert.equal(await page.locator(".pattern-vertex").count(), 5);
+  assert.equal(await page.locator(".pattern-edge").count(), 5);
+  await clickEdgeMidpoint(page, 3);
+  await page.waitForFunction(() => document.querySelectorAll(".pattern-edge").length === 7);
+  assert.equal(await page.locator(".pattern-vertex").count(), 6);
+  assert.match(await page.locator("#model-stats").innerText(), /Faces\s+2/);
+  assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+1/);
+  assert.match(await page.locator("#validation-badge").innerText(), /valid/i);
+
+  // Restore the canonical fixture for the existing editor and solver regression flow.
+  await page.locator("#reset-example").click();
+  await page.waitForFunction(() => document.querySelectorAll(".pattern-edge").length === 5);
+
   await page.locator(".pattern-edge").nth(4).click();
   const selectedEdgeFilter = await page.locator(".pattern-edge.selected").evaluate((element) => getComputedStyle(element).filter);
   assert.equal(selectedEdgeFilter, "none", `selected edge unexpectedly has filter: ${selectedEdgeFilter}`);
@@ -88,21 +118,7 @@ try {
   assert.equal(await page.locator("#edge-angle").inputValue(), "90");
 
   await page.locator("#crease-tool").click();
-  await page.locator(".pattern-edge").nth(0).evaluate((line) => {
-    const svg = line.ownerSVGElement;
-    const matrix = svg?.getScreenCTM();
-    if (!svg || !matrix) throw new Error("SVG transform unavailable");
-    const x1 = Number(line.getAttribute("x1"));
-    const y1 = Number(line.getAttribute("y1"));
-    const x2 = Number(line.getAttribute("x2"));
-    const y2 = Number(line.getAttribute("y2"));
-    const midpoint = new DOMPoint((x1 + x2) / 2, (y1 + y2) / 2).matrixTransform(matrix);
-    line.dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      clientX: midpoint.x,
-      clientY: midpoint.y,
-    }));
-  });
+  await clickEdgeMidpoint(page, 0);
   assert.equal(await page.locator(".pattern-vertex").count(), 5);
   assert.equal(await page.locator(".pattern-edge").count(), 6);
   assert.match(await page.locator("#model-stats").innerText(), /Vertices\s+5/);
@@ -139,6 +155,8 @@ try {
       baseUrl,
       metric,
       patternEdges: 5,
+      newPatternDesigner: true,
+      blankSheetCreaseDrawing: true,
       compactVertexSelection: true,
       svgSelectionFiltersDisabled: true,
       edgeVertexInsertion: true,
@@ -150,7 +168,25 @@ try {
       badResponses,
     }, null, 2)}\n`,
   );
-  console.log(`Origami Lab v0.4.1 smoke test passed at ${baseUrl}: ${metric}`);
+  console.log(`Origami Lab v0.5 smoke test passed at ${baseUrl}: ${metric}`);
 } finally {
   await browser.close();
+}
+
+async function clickEdgeMidpoint(page, index) {
+  await page.locator(".pattern-edge").nth(index).evaluate((line) => {
+    const svg = line.ownerSVGElement;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) throw new Error("SVG transform unavailable");
+    const x1 = Number(line.getAttribute("x1"));
+    const y1 = Number(line.getAttribute("y1"));
+    const x2 = Number(line.getAttribute("x2"));
+    const y2 = Number(line.getAttribute("y2"));
+    const midpoint = new DOMPoint((x1 + x2) / 2, (y1 + y2) / 2).matrixTransform(matrix);
+    line.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      clientX: midpoint.x,
+      clientY: midpoint.y,
+    }));
+  });
 }
