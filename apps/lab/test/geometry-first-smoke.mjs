@@ -55,7 +55,7 @@ try {
   assert.match(await page.locator("#model-stats").innerText(), /Hinges\s+1/);
 
   await page.locator("#select-tool").click();
-  await page.locator('.pattern-edge[stroke="#4b7dff"]').click();
+  await clickEdgeByStroke(page, "#4b7dff");
   await page.locator('[data-edge-assignment="C"]').click();
   await page.waitForFunction(() => /Cuts\s+1/.test(document.querySelector("#model-stats")?.innerText ?? ""));
   assert.equal(await page.locator(".pattern-edge.selected").getAttribute("stroke"), "#4bd078");
@@ -116,4 +116,22 @@ async function setExactLine(page, { x, y, length, angle }) {
   await page.locator("#exact-start-y").fill(String(y));
   await page.locator("#exact-length").fill(String(length));
   await page.locator("#exact-line-angle").fill(String(angle));
+}
+
+async function clickEdgeByStroke(page, stroke) {
+  await page.locator(`.pattern-edge[stroke="${stroke}"]`).first().evaluate((line) => {
+    const svg = line.ownerSVGElement;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) throw new Error("SVG transform unavailable");
+    const x1 = Number(line.getAttribute("x1"));
+    const y1 = Number(line.getAttribute("y1"));
+    const x2 = Number(line.getAttribute("x2"));
+    const y2 = Number(line.getAttribute("y2"));
+    const midpoint = new DOMPoint((x1 + x2) / 2, (y1 + y2) / 2).matrixTransform(matrix);
+    line.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      clientX: midpoint.x,
+      clientY: midpoint.y,
+    }));
+  });
 }
