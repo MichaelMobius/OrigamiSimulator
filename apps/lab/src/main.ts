@@ -1,15 +1,22 @@
 import {
   LegacyWebGLSolverAdapter,
   normalizeFoldGraph,
+  projectVertices2D,
   validateFoldForSimulation,
   type EdgeAssignment,
   type FoldDiagnostic,
   type FoldGraph,
   type NormalizedFoldGraph,
   type SimulationFrame,
+  type Vec2,
 } from "../../../packages/core/src/index";
 import {
-  addCreaseBetweenVertices,
+  findContainingFace,
+  insertInteriorVertex,
+  snapPointToGraph,
+  traceCreaseBetweenVertices,
+} from "./cadDrawing";
+import {
   deleteInternalCrease,
   GeometryEditError,
   GraphHistory,
@@ -39,6 +46,7 @@ type EditorTool = "select" | "crease";
 
 const elements = {
   svg: required<SVGSVGElement>("pattern-svg"),
+  patternStage: required<HTMLElement>("pattern-stage"),
   empty: required<HTMLElement>("pattern-empty"),
   runtimeStatus: required<HTMLElement>("runtime-status"),
   threeStage: required<HTMLElement>("three-stage"),
@@ -62,6 +70,8 @@ const elements = {
   redoButton: required<HTMLButtonElement>("redo-button"),
   selectTool: required<HTMLButtonElement>("select-tool"),
   creaseTool: required<HTMLButtonElement>("crease-tool"),
+  snapToggle: required<HTMLButtonElement>("snap-toggle"),
+  gridSize: required<HTMLInputElement>("grid-size"),
   toolHint: required<HTMLElement>("tool-hint"),
   fileInput: required<HTMLInputElement>("file-input"),
   legacyIframe: required<HTMLIFrameElement>("legacy-runtime"),
@@ -71,6 +81,7 @@ let graph = normalizeFoldGraph(structuredClone(EXAMPLE)).graph;
 let selectedEdge = -1;
 let activeTool: EditorTool = "select";
 let pendingVertex = -1;
+let snapEnabled = true;
 let sourceDiagnostics: FoldDiagnostic[] = [];
 let editorDiagnostics: FoldDiagnostic[] = [];
 let runtimeReady = false;
@@ -86,13 +97,7 @@ const pattern = new PatternView({
   onSelectVertex: handleVertexSelect,
 });
 
-elements.svg.addEventListener("click", () => {
-  if (activeTool === "select") selectEdge(-1);
-  else {
-    pendingVertex = -1;
-    renderToolState();
-  }
-});
+elements.svg.addEventListener("click", (event) => handlePatternBackgroundClick(event));
 elements.foldPercent.addEventListener("input", updateFoldPercentLabel);
 elements.simulate.addEventListener("click", () => void simulate());
 elements.edgeAssignment.addEventListener("change", updateSelectedAssignment);
@@ -106,6 +111,8 @@ elements.undoButton.addEventListener("click", undo);
 elements.redoButton.addEventListener("click", redo);
 elements.selectTool.addEventListener("click", () => setTool("select"));
 elements.creaseTool.addEventListener("click", () => setTool("crease"));
+elements.snapToggle.addEventListener("click", toggleSnap);
+elements.gridSize.addEventListener("input", renderToolState);
 document.addEventListener("keydown", handleKeyboardShortcut);
 
 loadGraph(EXAMPLE);
@@ -136,6 +143,7 @@ function loadGraph(input: FoldGraph): void {
   pendingVertex = -1;
   activeTool = "select";
   history.clear();
+  autoGridForGraph();
   renderAll();
 }
 
@@ -163,6 +171,61 @@ function renderGraphState(): void {
   elements.metric.textContent = "flat preview";
 }
 
+function handlePatternBackgroundClick(event: MouseEvent): void {
+  if (activeTool === "select") {
+    selectEdge(-1);
+    return;
+  }
+  const point = eventPointInSvg(event);
+  if (!point) return;
+  handleCadPoint(point);
+}
+
+function handleCadPoint(rawPoint: Vec2): void {
+  try {
+    const snap = snapPointToGraph(graph, rawPoint, {
+      tolerance: snapEnabled ? snapTolerance() : 0,
+      gridEnabled: snapEnabled,
+      gridSize: currentGridSize(),
+    });
+    if (snap.kind === "vertex") {
+      handleVertexSelect(snap.vertexIndex);
+      return;
+    }
+    if (snap.kind === "edge") {
+      handleEdgeSelect(snap.edgeIndex, snap.parameter);
+      return;
+    }
+
+    const faceIndex = findContainingFace(graph, snap.point);
+    const inserted = insertInteriorVertex(graph, faceIndex, snap.point);
+    if (pendingVertex < 0) {
+      applyGraphEdit(
+        inserted.graph,
+        "Insert free point",
+        -1,
+        inserted.droppedOrderMetadata ? topologyMetadataDiagnostic() : undefined,
+        inserted.vertexIndex,
+      );
+      return;
+    }
+
+    const firstVertex = pendingVertex;
+    const traced = traceCreaseBetweenVertices(inserted.graph, firstVertex, inserted.vertexIndex, "V", 180);
+    applyGraphEdit(
+      traced.graph,
+      "Draw free crease",
+      traced.edgeIndices.at(-1) ?? -1,
+      inserted.droppedOrderMetadata || traced.droppedOrderMetadata
+        ? topologyMetadataDiagnostic()
+        : undefined,
+    );
+  } catch (error) {
+    addEditorDiagnostic(error, geometryCode(error));
+    renderToolState();
+  }
+}
+
 function handleEdgeSelect(index: number, parameter: number): void {
   if (activeTool !== "crease") {
     selectEdge(index);
@@ -183,12 +246,12 @@ function handleEdgeSelect(index: number, parameter: number): void {
       return;
     }
 
-    const crease = addCreaseBetweenVertices(split.graph, firstVertex, split.vertexIndex, "V", 180);
+    const traced = traceCreaseBetweenVertices(split.graph, firstVertex, split.vertexIndex, "V", 180);
     applyGraphEdit(
-      crease.graph,
-      "Add crease to edge",
-      crease.edgeIndex,
-      split.droppedOrderMetadata || crease.droppedOrderMetadata
+      traced.graph,
+      "Draw crease",
+      traced.edgeIndices.at(-1) ?? -1,
+      split.droppedOrderMetadata || traced.droppedOrderMetadata
         ? topologyMetadataDiagnostic()
         : undefined,
     );
@@ -220,14 +283,13 @@ function handleVertexSelect(index: number): void {
   }
 
   try {
-    const result = addCreaseBetweenVertices(graph, pendingVertex, index, "V", 180);
+    const result = traceCreaseBetweenVertices(graph, pendingVertex, index, "V", 180);
     applyGraphEdit(
       result.graph,
-      "Add crease",
-      result.edgeIndex,
+      "Draw crease",
+      result.edgeIndices.at(-1) ?? -1,
       result.droppedOrderMetadata ? topologyMetadataDiagnostic() : undefined,
     );
-    pendingVertex = -1;
   } catch (error) {
     addEditorDiagnostic(error, geometryCode(error));
     renderToolState();
@@ -249,19 +311,28 @@ function setTool(tool: EditorTool): void {
   renderToolState();
 }
 
+function toggleSnap(): void {
+  snapEnabled = !snapEnabled;
+  renderToolState();
+}
+
 function renderToolState(): void {
   elements.selectTool.classList.toggle("active", activeTool === "select");
   elements.creaseTool.classList.toggle("active", activeTool === "crease");
+  elements.snapToggle.classList.toggle("active", snapEnabled);
   elements.selectTool.setAttribute("aria-pressed", String(activeTool === "select"));
   elements.creaseTool.setAttribute("aria-pressed", String(activeTool === "crease"));
+  elements.snapToggle.setAttribute("aria-pressed", String(snapEnabled));
+  elements.patternStage.dataset.cadActive = String(activeTool === "crease");
   pattern.setInteraction(activeTool, pendingVertex);
+  pattern.setGrid(currentGridSize(), activeTool === "crease" && snapEnabled);
 
   if (activeTool === "select") {
     elements.toolHint.textContent = "Select an edge to edit its assignment or angle.";
   } else if (pendingVertex < 0) {
-    elements.toolHint.textContent = "Crease tool · choose a vertex or click an edge to insert one.";
+    elements.toolHint.textContent = "Crease CAD · click a vertex, edge, or any free point to start.";
   } else {
-    elements.toolHint.textContent = `Crease tool · vertex ${pendingVertex} selected; choose a vertex or click an edge.`;
+    elements.toolHint.textContent = `Crease CAD · vertex ${pendingVertex} selected; click anywhere to finish. Crossings are split automatically.`;
   }
 }
 
@@ -283,6 +354,7 @@ function updateSelectedAssignment(): void {
   const next = structuredClone(graph) as NormalizedFoldGraph;
   const assignment = elements.edgeAssignment.value as EdgeAssignment;
   next.edges_assignment[selectedEdge] = assignment;
+  if (Array.isArray(next.edges_origamiLabAuxiliary)) next.edges_origamiLabAuxiliary[selectedEdge] = false;
 
   const current = next.edges_foldAngle[selectedEdge];
   if (assignment === "M" || assignment === "V") {
@@ -366,6 +438,11 @@ function renderHistory(): void {
 }
 
 function handleKeyboardShortcut(event: KeyboardEvent): void {
+  if (event.key === "Escape" && activeTool === "crease" && !isTextEditingTarget(event.target)) {
+    pendingVertex = -1;
+    renderToolState();
+    return;
+  }
   if (!(event.ctrlKey || event.metaKey) || isTextEditingTarget(event.target)) return;
   const key = event.key.toLowerCase();
   if (key === "z" && event.shiftKey) {
@@ -411,12 +488,16 @@ function renderDiagnostics(): void {
 }
 
 function renderStats(): void {
+  const auxiliary = Array.isArray(graph.edges_origamiLabAuxiliary)
+    ? graph.edges_origamiLabAuxiliary.filter(Boolean).length
+    : 0;
   const stats = [
     ["Vertices", graph.vertices_coords?.length ?? 0],
     ["Edges", graph.edges_vertices.length],
     ["Faces", graph.faces_vertices?.length ?? 0],
     ["Mountains", graph.edges_assignment.filter((value) => value === "M").length],
     ["Valleys", graph.edges_assignment.filter((value) => value === "V").length],
+    ["CAD topology", auxiliary],
   ];
   elements.modelStats.replaceChildren();
   stats.forEach(([label, value]) => {
@@ -545,6 +626,46 @@ function isInternalEdge(index: number): boolean {
     const next = face[(faceIndex + 1) % face.length];
     return (vertex === a && next === b) || (vertex === b && next === a);
   })).length === 2;
+}
+
+function eventPointInSvg(event: MouseEvent): Vec2 | undefined {
+  const matrix = elements.svg.getScreenCTM();
+  if (!matrix) return undefined;
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+  return [point.x, point.y];
+}
+
+function snapTolerance(): number {
+  const points = projectVertices2D(graph.vertices_coords ?? []);
+  if (points.length === 0) return 1;
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
+  return span * 0.022;
+}
+
+function currentGridSize(): number {
+  const value = Number(elements.gridSize.value);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function autoGridForGraph(): void {
+  const points = projectVertices2D(graph.vertices_coords ?? []);
+  if (points.length === 0) return;
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  if (!(span > 0)) return;
+  const units = graph.file_units;
+  if (units === "mm" || span > 20) {
+    const candidate = span / 20;
+    const magnitude = 10 ** Math.floor(Math.log10(candidate));
+    const normalized = candidate / magnitude;
+    const rounded = normalized >= 5 ? 5 : normalized >= 2 ? 2 : 1;
+    elements.gridSize.value = String(rounded * magnitude);
+  } else {
+    elements.gridSize.value = String(Number((span / 10).toPrecision(3)));
+  }
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
