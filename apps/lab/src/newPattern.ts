@@ -1,3 +1,5 @@
+import "./geometryFirst.css";
+import "./geometryFirst";
 import { createRectangularPattern } from "./patternFactory";
 
 const openButton = required<HTMLButtonElement>("new-pattern-button");

@@ -1,6 +1,6 @@
 {
   "name": "@origami-lab/app",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "build": "vite build --config vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:geometry": "node --experimental-strip-types --test test/*.test.ts",
-    "test:smoke": "node test/editor-smoke.mjs && node test/sketch-tools-smoke.mjs",
+    "test:smoke": "node test/geometry-first-smoke.mjs",
     "check": "npm run typecheck && npm run test:geometry && npm run build"
   },
   "dependencies": {
