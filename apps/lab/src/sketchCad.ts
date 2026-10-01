@@ -1,11 +1,13 @@
 import {
   projectVertices2D,
-  type EdgeAssignment,
-  type NormalizedFoldGraph,
   type Vec2,
-} from "../../../packages/core/src/index";
-import { GeometryEditError } from "./geometryEditor";
-import { moveVertexSafely } from "./precisionCad";
+} from "../../../packages/core/src/geometry/planar.ts";
+import type {
+  EdgeAssignment,
+  NormalizedFoldGraph,
+} from "../../../packages/core/src/fold/types.ts";
+import { GeometryEditError } from "./geometryEditor.ts";
+import { moveVertexSafely } from "./precisionCad.ts";
 
 export const DRAW_ASSIGNMENTS = ["V", "M", "F", "C", "U"] as const satisfies readonly EdgeAssignment[];
 
