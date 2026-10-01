@@ -1,5 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { validateFoldForSimulation } from "../../../packages/core/src/fold/validateSimulation.ts";
+import {
+  findContainingFace,
+  insertInteriorVertex,
+  snapPointToGraph,
+  traceCreaseBetweenVertices,
+} from "../src/cadDrawing.ts";
 import {
   addCreaseBetweenVertices,
   deleteInternalCrease,
@@ -15,6 +22,18 @@ function fixture() {
     edges_assignment: ["B", "B", "B", "B", "V"],
     edges_foldAngle: [0, 0, 0, 0, 90],
     faces_vertices: [[0, 1, 2], [0, 2, 3]],
+  };
+}
+
+function blankSquare() {
+  return {
+    file_spec: 1.1,
+    file_units: "mm",
+    vertices_coords: [[0, 0], [10, 0], [10, 10], [0, 10]],
+    edges_vertices: [[0, 1], [1, 2], [2, 3], [3, 0]],
+    edges_assignment: ["B", "B", "B", "B"],
+    edges_foldAngle: [0, 0, 0, 0],
+    faces_vertices: [[0, 1, 2, 3]],
   };
 }
 
@@ -121,3 +140,56 @@ test("edge splits too close to an endpoint are rejected", () => {
     (error) => error instanceof GeometryEditError && error.code === "split-too-close-to-vertex",
   );
 });
+
+test("free interior points create solver-safe auxiliary topology", () => {
+  const graph = blankSquare();
+  const faceIndex = findContainingFace(graph, [5, 5]);
+  const inserted = insertInteriorVertex(graph, faceIndex, [5, 5]);
+  assert.equal(inserted.vertexIndex, 4);
+  assert.equal(inserted.graph.vertices_coords?.length, 5);
+  assert.equal(inserted.graph.edges_vertices.length, 8);
+  assert.equal(inserted.graph.faces_vertices?.length, 4);
+  assert.deepEqual(inserted.graph.edges_assignment.slice(4), ["F", "F", "F", "F"]);
+  assert.deepEqual(inserted.graph.edges_origamiLabAuxiliary, [false, false, false, false, true, true, true, true]);
+  assert.equal(validateFoldForSimulation(inserted.graph).valid, true);
+});
+
+test("snapping prioritizes vertices, then edges, then grid", () => {
+  const graph = blankSquare();
+  const vertex = snapPointToGraph(graph, [0.1, 0.1], { tolerance: 0.5, gridEnabled: true, gridSize: 2 });
+  assert.equal(vertex.kind, "vertex");
+  const edge = snapPointToGraph(graph, [5.1, 0.2], { tolerance: 0.5, gridEnabled: true, gridSize: 2 });
+  assert.equal(edge.kind, "edge");
+  const grid = snapPointToGraph(graph, [4.2, 6.7], { tolerance: 0.1, gridEnabled: true, gridSize: 2 });
+  assert.equal(grid.kind, "grid");
+  assert.deepEqual(grid.point, [4, 6]);
+});
+
+test("a crease crossing an existing crease creates an automatic intersection", () => {
+  const graph = {
+    file_spec: 1.1,
+    vertices_coords: [[0, 0], [10, 0], [10, 10], [0, 10], [5, 0], [5, 10]],
+    edges_vertices: [[0, 4], [4, 1], [1, 2], [2, 5], [5, 3], [3, 0], [4, 5]],
+    edges_assignment: ["B", "B", "B", "B", "B", "B", "V"],
+    edges_foldAngle: [0, 0, 0, 0, 0, 0, 180],
+    faces_vertices: [[0, 4, 5, 3], [4, 1, 2, 5]],
+  };
+
+  const leftEdge = findEdge(graph, 3, 0);
+  const left = splitEdgeAt(graph, leftEdge, 0.5);
+  const rightEdge = findEdge(left.graph, 1, 2);
+  const right = splitEdgeAt(left.graph, rightEdge, 0.5);
+  const traced = traceCreaseBetweenVertices(right.graph, left.vertexIndex, right.vertexIndex, "V", 180);
+
+  assert.equal(traced.intersectionVertices.length, 1);
+  assert.equal(traced.graph.vertices_coords?.length, 9);
+  assert.equal(traced.graph.faces_vertices?.length, 4);
+  assert.equal(traced.graph.edges_assignment.filter((assignment) => assignment === "V").length, 4);
+  assert.equal(validateFoldForSimulation(traced.graph).valid, true);
+});
+
+function findEdge(graph: { edges_vertices: readonly (readonly [number, number])[] }, a: number, b: number): number {
+  const index = graph.edges_vertices.findIndex(([c, d]) => (a === c && b === d) || (a === d && b === c));
+  assert.notEqual(index, -1, `missing edge ${a}-${b}`);
+  return index;
+}
