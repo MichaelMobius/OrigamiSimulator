@@ -28,31 +28,20 @@ try {
   await page.locator("#crease-tool").click();
   await setExactLine(page, { x: 0, y: 70, length: 200, angle: 0 });
   await page.locator("#exact-draw-button").click();
-  await page.waitForTimeout(500);
-  const firstDrawState = await page.evaluate(() => ({
-    stats: document.querySelector("#model-stats")?.textContent ?? "",
-    diagnostics: document.querySelector("#diagnostics")?.textContent ?? "",
-    hint: document.querySelector("#tool-hint")?.textContent ?? "",
-    edges: document.querySelectorAll(".pattern-edge").length,
-    vertices: document.querySelectorAll(".pattern-vertex").length,
-    neutralPressed: document.querySelector('[data-draw-assignment="U"]')?.getAttribute("aria-pressed"),
-    linePressed: document.querySelector("#crease-tool")?.getAttribute("aria-pressed"),
-  }));
-  console.log("GEOMETRY_FIRST_DRAW_STATE", JSON.stringify(firstDrawState));
-  assert.match(firstDrawState.stats, /Faces\s+2/, `first exact line failed: ${JSON.stringify(firstDrawState)}`);
-  assert.match(firstDrawState.stats, /Hinges\s+1/);
+  await page.waitForFunction(() => /Faces\s+2/.test(document.querySelector("#model-stats")?.innerText ?? ""));
+  assert.match(await page.locator("#model-stats").innerText(), /Hinges\s+1/);
   assert.equal(await page.locator(".pattern-edge.selected").getAttribute("stroke"), "#d56cff");
   assert.match(await page.locator(".pattern-edge.selected").evaluate((el) => getComputedStyle(el).stroke), /rgb\(23, 23, 23\)/);
 
   assert.equal(await page.locator('[data-edge-assignment="U"]').getAttribute("aria-pressed"), "true");
   await page.locator('[data-edge-assignment="V"]').click();
-  await page.waitForFunction(() => /Valleys\s+1/.test(document.querySelector("#model-stats")?.textContent ?? ""));
+  await page.waitForFunction(() => /Valleys\s+1/.test(document.querySelector("#model-stats")?.innerText ?? ""));
   assert.match(await page.locator("#model-stats").innerText(), /Hinges\s+0/);
   assert.equal(await page.locator(".pattern-edge.selected").getAttribute("stroke"), "#4b7dff");
   assert.equal(await page.locator("#edge-assignment").inputValue(), "V");
 
   await page.keyboard.press("m");
-  await page.waitForFunction(() => /Mountains\s+1/.test(document.querySelector("#model-stats")?.textContent ?? ""));
+  await page.waitForFunction(() => /Mountains\s+1/.test(document.querySelector("#model-stats")?.innerText ?? ""));
   assert.equal(await page.locator("#edge-assignment").inputValue(), "M");
   assert.equal(await page.locator(".pattern-edge.selected").getAttribute("stroke"), "#ff4d63");
 
@@ -61,14 +50,14 @@ try {
 
   await setExactLine(page, { x: 0, y: 35, length: 200, angle: 0 });
   await page.locator("#exact-draw-button").click();
-  await page.waitForFunction(() => /Faces\s+3/.test(document.querySelector("#model-stats")?.textContent ?? ""));
+  await page.waitForFunction(() => /Faces\s+3/.test(document.querySelector("#model-stats")?.innerText ?? ""));
   assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+1/);
   assert.match(await page.locator("#model-stats").innerText(), /Hinges\s+1/);
 
   await page.locator("#select-tool").click();
   await page.locator('.pattern-edge[stroke="#4b7dff"]').click();
   await page.locator('[data-edge-assignment="C"]').click();
-  await page.waitForFunction(() => /Cuts\s+1/.test(document.querySelector("#model-stats")?.textContent ?? ""));
+  await page.waitForFunction(() => /Cuts\s+1/.test(document.querySelector("#model-stats")?.innerText ?? ""));
   assert.equal(await page.locator(".pattern-edge.selected").getAttribute("stroke"), "#4bd078");
   assert.match(await page.locator("#diagnostics").innerText(), /does not model physical sheet separation/i);
 
