@@ -17,8 +17,6 @@ try {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#runtime-status.ready", { timeout: 30_000 });
 
-  // Geometry and semantics are separate: the old pre-draw palette is hidden,
-  // while a post-selection palette is available for classification.
   assert.equal(await page.locator(".sketch-draw-section .assignment-palette").isVisible(), false);
   assert.equal(await page.locator("[data-edge-assignment]").count(), 5);
   assert.match(await page.locator(".geometry-workflow").innerText(), /Draw lines/i);
@@ -27,16 +25,25 @@ try {
   await createCustomSheet(page, "Geometry first smoke", 200, 140);
   await page.waitForFunction(() => document.querySelector('[data-draw-assignment="U"]')?.getAttribute("aria-pressed") === "true");
 
-  // Draw geometry first. A new line is U/unassigned and rendered neutrally.
   await page.locator("#crease-tool").click();
   await setExactLine(page, { x: 0, y: 70, length: 200, angle: 0 });
   await page.locator("#exact-draw-button").click();
-  await page.waitForFunction(() => /Faces\s+2/.test(document.querySelector("#model-stats")?.textContent ?? ""));
-  assert.match(await page.locator("#model-stats").innerText(), /Hinges\s+1/);
+  await page.waitForTimeout(500);
+  const firstDrawState = await page.evaluate(() => ({
+    stats: document.querySelector("#model-stats")?.textContent ?? "",
+    diagnostics: document.querySelector("#diagnostics")?.textContent ?? "",
+    hint: document.querySelector("#tool-hint")?.textContent ?? "",
+    edges: document.querySelectorAll(".pattern-edge").length,
+    vertices: document.querySelectorAll(".pattern-vertex").length,
+    neutralPressed: document.querySelector('[data-draw-assignment="U"]')?.getAttribute("aria-pressed"),
+    linePressed: document.querySelector("#crease-tool")?.getAttribute("aria-pressed"),
+  }));
+  console.log("GEOMETRY_FIRST_DRAW_STATE", JSON.stringify(firstDrawState));
+  assert.match(firstDrawState.stats, /Faces\s+2/, `first exact line failed: ${JSON.stringify(firstDrawState)}`);
+  assert.match(firstDrawState.stats, /Hinges\s+1/);
   assert.equal(await page.locator(".pattern-edge.selected").getAttribute("stroke"), "#d56cff");
   assert.match(await page.locator(".pattern-edge.selected").evaluate((el) => getComputedStyle(el).stroke), /rgb\(23, 23, 23\)/);
 
-  // Classify afterwards using the visible color/type palette.
   assert.equal(await page.locator('[data-edge-assignment="U"]').getAttribute("aria-pressed"), "true");
   await page.locator('[data-edge-assignment="V"]').click();
   await page.waitForFunction(() => /Valleys\s+1/.test(document.querySelector("#model-stats")?.textContent ?? ""));
@@ -44,7 +51,6 @@ try {
   assert.equal(await page.locator(".pattern-edge.selected").getAttribute("stroke"), "#4b7dff");
   assert.equal(await page.locator("#edge-assignment").inputValue(), "V");
 
-  // Keyboard shortcuts now classify the selected line instead of changing the draw tool.
   await page.keyboard.press("m");
   await page.waitForFunction(() => /Mountains\s+1/.test(document.querySelector("#model-stats")?.textContent ?? ""));
   assert.equal(await page.locator("#edge-assignment").inputValue(), "M");
@@ -53,14 +59,12 @@ try {
   await page.keyboard.press("v");
   assert.equal(await page.locator("#edge-assignment").inputValue(), "V");
 
-  // Draw another independent neutral line without changing semantic mode first.
   await setExactLine(page, { x: 0, y: 35, length: 200, angle: 0 });
   await page.locator("#exact-draw-button").click();
   await page.waitForFunction(() => /Faces\s+3/.test(document.querySelector("#model-stats")?.textContent ?? ""));
   assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+1/);
   assert.match(await page.locator("#model-stats").innerText(), /Hinges\s+1/);
 
-  // Select an existing line and recolor/reclassify it as a cut.
   await page.locator("#select-tool").click();
   await page.locator('.pattern-edge[stroke="#4b7dff"]').click();
   await page.locator('[data-edge-assignment="C"]').click();
@@ -72,7 +76,6 @@ try {
   assert.match(await page.locator("#model-stats").innerText(), /Cuts\s+0/);
   assert.match(await page.locator("#model-stats").innerText(), /Valleys\s+1/);
 
-  // Existing solver remains intact.
   await page.locator("#reset-example").click();
   await page.waitForFunction(() => document.querySelectorAll(".pattern-edge").length === 5);
   await page.locator("#simulate-button").click();
