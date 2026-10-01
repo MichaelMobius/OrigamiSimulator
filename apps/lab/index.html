@@ -41,7 +41,7 @@
             <div class="header-tools cad-toolbar">
               <button id="select-tool" class="tool-button active" type="button" aria-pressed="true">Select</button>
               <button id="crease-tool" class="tool-button" type="button" aria-pressed="false">+ Crease</button>
-              <button id="snap-toggle" class="tool-button active" type="button" aria-pressed="true" title="Snap to vertices, edges and grid">Snap</button>
+              <button id="snap-toggle" class="tool-button active" type="button" aria-pressed="true" title="Snap to vertices, edge midpoints, edges, precision angles and grid">Snap</button>
               <label class="grid-control" title="Grid spacing">
                 <span>Grid</span>
                 <input id="grid-size" type="number" min="0.0001" step="1" value="10" inputmode="decimal" />
@@ -52,6 +52,7 @@
           <div id="pattern-stage" class="pattern-stage">
             <svg id="pattern-svg" role="img" aria-label="Origami crease pattern"></svg>
             <div id="pattern-empty" class="empty-state" hidden>No crease pattern loaded.</div>
+            <div id="precision-readout" class="precision-readout" aria-live="polite">x — · y —</div>
             <div id="tool-hint" class="tool-hint">Select an edge to edit its assignment or angle.</div>
           </div>
           <div class="legend" aria-label="Crease legend">
@@ -85,6 +86,7 @@
             <div id="selection-empty" class="muted-block">Select an edge in the pattern.</div>
             <div id="edge-controls" hidden>
               <div class="selection-title">Edge <strong id="edge-index">0</strong></div>
+              <div id="edge-metrics" class="precision-metrics"></div>
               <label class="field">
                 <span>Assignment</span>
                 <select id="edge-assignment">
@@ -103,6 +105,15 @@
               </label>
               <button id="delete-edge-button" class="button danger wide" type="button">Delete internal crease</button>
             </div>
+          </section>
+
+          <section class="inspector-section compact precision-transform-section">
+            <span class="eyebrow">PRECISION TRANSFORM</span>
+            <div class="transform-actions">
+              <button id="mirror-vertical" class="button ghost" type="button" title="Mirror the complete pattern left/right">Mirror ↔</button>
+              <button id="mirror-horizontal" class="button ghost" type="button" title="Mirror the complete pattern up/down">Mirror ↕</button>
+            </div>
+            <p class="transform-note">Drag vertices in Select mode. With Snap enabled, moved vertices land on the active grid. Mirror transforms preserve FOLD edge metadata.</p>
           </section>
 
           <section class="inspector-section grow">
