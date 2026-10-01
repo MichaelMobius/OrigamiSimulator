@@ -119,8 +119,187 @@
   border-radius: 0;
 }
 
+.legend .swatch.cut { background: #4bd078; }
+.legend .swatch.hinge { background: #d56cff; }
+
 .legend-aux {
   opacity: 0.72;
+}
+
+/* v0.8 sketch-style construction controls */
+.focus-action.active,
+#design-focus-button[aria-pressed="true"] {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+
+.workspace.design-focus {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.workspace.design-focus .simulation-pane {
+  display: none;
+}
+
+.workspace.design-focus .pattern-pane {
+  border-right: 1px solid var(--line);
+}
+
+.workspace.design-focus .pattern-stage {
+  padding: 34px;
+}
+
+.workspace.design-focus .pattern-pane .pane-header {
+  padding-inline: 22px;
+}
+
+.sketch-draw-section {
+  background: rgba(255,255,255,.44);
+}
+
+.sketch-section-row {
+  margin-bottom: 9px;
+}
+
+.draw-type-badge {
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.assignment-palette {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+  margin: 4px 0 12px;
+}
+
+.assignment-button {
+  min-width: 0;
+  padding: 7px 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: #55534e;
+  cursor: pointer;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  transition: 120ms ease;
+}
+
+.assignment-button:hover {
+  border-color: #aaa79e;
+  transform: translateY(-1px);
+}
+
+.assignment-button i {
+  display: block;
+  width: 22px;
+  height: 3px;
+  border-radius: 999px;
+  background: #aaa;
+}
+
+.assignment-button span {
+  font: 700 11px/1 "DM Mono", ui-monospace, monospace;
+}
+
+.assignment-button small {
+  font-size: 8px;
+  line-height: 1;
+  color: #8a8880;
+}
+
+.assignment-button.valley i { background: #4b7dff; }
+.assignment-button.mountain i { background: #ff4d63; }
+.assignment-button.flat i { background: #f2c94c; }
+.assignment-button.cut i { background: #4bd078; }
+.assignment-button.hinge i { background: #d56cff; }
+
+.assignment-button.active {
+  background: #171717;
+  color: #fff;
+  border-color: #171717;
+  box-shadow: 0 0 0 2px rgba(17,17,17,.08);
+}
+
+.assignment-button.active small { color: rgba(255,255,255,.62); }
+
+.compact-field {
+  margin-top: 8px;
+}
+
+.sketch-subhead {
+  margin: 13px 0 7px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(215,213,205,.75);
+  color: #77756f;
+  font: 600 9px/1.2 "DM Mono", ui-monospace, monospace;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.exact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 7px;
+}
+
+.mini-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #77756f;
+  font-size: 9px;
+}
+
+.mini-field input {
+  min-width: 0;
+  height: 32px;
+  padding-inline: 8px;
+}
+
+.compact-button {
+  width: 100%;
+  min-height: 30px;
+  margin-bottom: 7px;
+}
+
+.exact-draw-button {
+  margin-top: 1px;
+}
+
+.sketch-note {
+  margin: 8px 0 0;
+  color: #77756f;
+  font-size: 10px;
+  line-height: 1.42;
+}
+
+.dimension-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.dimension-actions #apply-edge-geometry {
+  grid-column: 1 / -1;
+}
+
+.dimension-actions .button {
+  min-width: 0;
+  min-height: 30px;
+  padding-inline: 7px;
+  font-size: 10px;
+}
+
+@media (min-width: 1180px) {
+  .workspace:not(.design-focus) {
+    grid-template-columns: minmax(410px, 1.08fr) minmax(390px, .95fr) 300px;
+  }
 }
 
 @media (max-width: 900px) {
@@ -137,5 +316,19 @@
     max-width: calc(100% - 16px);
     top: 8px;
     left: 8px;
+  }
+
+  .assignment-palette {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .workspace.design-focus {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace.design-focus .simulation-pane {
+    display: flex;
   }
 }
