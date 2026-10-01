@@ -26,6 +26,8 @@ export class PatternView {
   private selectedEdge = -1;
   private pendingVertex = -1;
   private tool: "select" | "crease" = "select";
+  private gridSpacing = 0;
+  private gridVisible = false;
 
   constructor(private readonly options: PatternViewOptions) {}
 
@@ -44,6 +46,12 @@ export class PatternView {
   setInteraction(tool: "select" | "crease", pendingVertex: number): void {
     this.tool = tool;
     this.pendingVertex = pendingVertex;
+    this.render();
+  }
+
+  setGrid(spacing: number, visible: boolean): void {
+    this.gridSpacing = Number.isFinite(spacing) && spacing > 0 ? spacing : 0;
+    this.gridVisible = visible;
     this.render();
   }
 
@@ -66,8 +74,15 @@ export class PatternView {
       `${bounds.minX - padding} ${bounds.minY - padding} ${bounds.width + 2 * padding} ${bounds.height + 2 * padding}`,
     );
 
+    if (this.gridVisible && this.gridSpacing > 0) {
+      renderGrid(svg, bounds, padding, this.gridSpacing);
+    }
+
     const vertexRadius = span * 0.0085;
     const vertexHitRadius = span * 0.026;
+    const auxiliary = Array.isArray(graph.edges_origamiLabAuxiliary)
+      ? graph.edges_origamiLabAuxiliary as boolean[]
+      : [];
 
     edges.forEach((edge, index) => {
       const a = points[edge[0]];
@@ -78,11 +93,17 @@ export class PatternView {
       line.setAttribute("y1", String(a[1]));
       line.setAttribute("x2", String(b[0]));
       line.setAttribute("y2", String(b[1]));
-      line.setAttribute("stroke", COLORS[graph.edges_assignment[index] ?? "U"]);
-      line.setAttribute("stroke-width", index === this.selectedEdge ? "5" : "2");
+      const isAuxiliary = auxiliary[index] === true;
+      line.setAttribute("stroke", isAuxiliary ? "#9d9b94" : COLORS[graph.edges_assignment[index] ?? "U"]);
+      line.setAttribute("stroke-width", index === this.selectedEdge ? "5" : isAuxiliary ? "1" : "2");
       line.setAttribute("stroke-linecap", "round");
       line.setAttribute("vector-effect", "non-scaling-stroke");
+      if (isAuxiliary) {
+        line.setAttribute("stroke-dasharray", "3 5");
+        line.setAttribute("opacity", "0.24");
+      }
       line.classList.add("pattern-edge");
+      if (isAuxiliary) line.classList.add("auxiliary");
       line.dataset.index = String(index);
       line.setAttribute("role", "button");
       line.setAttribute("tabindex", "0");
@@ -108,8 +129,6 @@ export class PatternView {
         this.options.onSelectVertex(index);
       };
 
-      // Interaction geometry must never paint. `pointer-events=all` keeps the
-      // generous hit area active even though fill/stroke are both none.
       const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       hit.setAttribute("cx", String(x));
       hit.setAttribute("cy", String(y));
@@ -151,6 +170,51 @@ export class PatternView {
 
 export function assignmentColor(assignment: EdgeAssignment): string {
   return COLORS[assignment];
+}
+
+function renderGrid(
+  svg: SVGSVGElement,
+  bounds: ReturnType<typeof calculateBounds>,
+  padding: number,
+  spacing: number,
+): void {
+  const minX = bounds.minX - padding;
+  const maxX = bounds.minX + bounds.width + padding;
+  const minY = bounds.minY - padding;
+  const maxY = bounds.minY + bounds.height + padding;
+  const firstX = Math.ceil(minX / spacing) * spacing;
+  const firstY = Math.ceil(minY / spacing) * spacing;
+  const verticalCount = Math.floor((maxX - firstX) / spacing) + 1;
+  const horizontalCount = Math.floor((maxY - firstY) / spacing) + 1;
+  if (verticalCount + horizontalCount > 240) return;
+
+  const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  group.classList.add("pattern-grid");
+  group.setAttribute("pointer-events", "none");
+  group.setAttribute("opacity", "0.16");
+  for (let x = firstX; x <= maxX + spacing * 1e-6; x += spacing) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", String(x));
+    line.setAttribute("y1", String(minY));
+    line.setAttribute("x2", String(x));
+    line.setAttribute("y2", String(maxY));
+    line.setAttribute("stroke", "#77756f");
+    line.setAttribute("stroke-width", "1");
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    group.append(line);
+  }
+  for (let y = firstY; y <= maxY + spacing * 1e-6; y += spacing) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", String(minX));
+    line.setAttribute("y1", String(y));
+    line.setAttribute("x2", String(maxX));
+    line.setAttribute("y2", String(y));
+    line.setAttribute("stroke", "#77756f");
+    line.setAttribute("stroke-width", "1");
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    group.append(line);
+  }
+  svg.append(group);
 }
 
 function edgeParameter(
