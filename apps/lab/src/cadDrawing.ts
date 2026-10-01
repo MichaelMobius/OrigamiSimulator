@@ -5,12 +5,14 @@ import {
   pointOnSegment,
   projectVertices2D,
   segmentIntersectionParameters,
-  type EdgeAssignment,
-  type NormalizedFoldGraph,
   type Vec2,
-} from "../../../packages/core/src/index";
-import { addCreaseBetweenVertices, GeometryEditError } from "./geometryEditor";
-import { splitEdgeAt } from "./edgeSplit";
+} from "../../../packages/core/src/geometry/planar.ts";
+import type {
+  EdgeAssignment,
+  NormalizedFoldGraph,
+} from "../../../packages/core/src/fold/types.ts";
+import { addCreaseBetweenVertices, GeometryEditError } from "./geometryEditor.ts";
+import { splitEdgeAt } from "./edgeSplit.ts";
 
 const DERIVED_TOPOLOGY_KEYS = [
   "edges_faces",
