@@ -38,10 +38,79 @@
   cursor: crosshair;
 }
 
+.pattern-svg[data-tool="select"] .pattern-vertex,
+#pattern-svg[data-tool="select"] .pattern-vertex-hit {
+  cursor: grab;
+}
+
+#pattern-svg[data-dragging-vertex] .pattern-vertex,
+#pattern-svg[data-dragging-vertex] .pattern-vertex-hit {
+  cursor: grabbing;
+}
+
+.pattern-vertex.dragging {
+  fill: #ff593d !important;
+  stroke: #fff !important;
+  stroke-width: 2 !important;
+  filter: none !important;
+}
+
 .pattern-grid line,
 .pattern-edge.auxiliary,
-.pattern-snap-preview {
+.pattern-snap-preview,
+.pattern-vertex.dragging {
   filter: none !important;
+}
+
+.precision-readout {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 4;
+  max-width: calc(100% - 24px);
+  padding: 7px 9px;
+  border: 1px solid rgba(17, 17, 17, 0.12);
+  border-radius: 8px;
+  background: rgba(250, 249, 246, 0.9);
+  box-shadow: 0 4px 14px rgba(17, 17, 17, 0.05);
+  color: #5d5b56;
+  font: 600 10px/1.25 "DM Mono", ui-monospace, monospace;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.precision-metrics {
+  margin: 7px 0 12px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: rgba(17, 17, 17, 0.045);
+  color: #6d6b66;
+  font: 600 10px/1.4 "DM Mono", ui-monospace, monospace;
+}
+
+.precision-transform-section {
+  gap: 10px;
+}
+
+.transform-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.transform-actions .button {
+  justify-content: center;
+  width: 100%;
+}
+
+.transform-note {
+  margin: 0;
+  color: #77756f;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .legend .swatch.auxiliary {
@@ -61,5 +130,12 @@
 
   .grid-control {
     height: 32px;
+  }
+
+  .precision-readout {
+    font-size: 9px;
+    max-width: calc(100% - 16px);
+    top: 8px;
+    left: 8px;
   }
 }
