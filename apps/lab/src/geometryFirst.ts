@@ -12,7 +12,6 @@ const drawSection = required<HTMLElement>(".sketch-draw-section");
 const drawPalette = required<HTMLElement>(".sketch-draw-section .assignment-palette");
 const drawNeutralButton = required<HTMLButtonElement>('[data-draw-assignment="U"]');
 const selectTool = required<HTMLButtonElement>("#select-tool");
-const lineTool = required<HTMLButtonElement>("#crease-tool");
 const edgeControls = required<HTMLElement>("#edge-controls");
 const edgeAssignment = required<HTMLSelectElement>("#edge-assignment");
 const toolHint = required<HTMLElement>("#tool-hint");
@@ -35,12 +34,20 @@ neutralObserver.observe(drawPalette, {
   attributeFilter: ["aria-pressed", "class"],
 });
 
+const selectionObserver = new MutationObserver(() => queueMicrotask(syncSelectionPalette));
+selectionObserver.observe(edgeControls, {
+  attributes: true,
+  attributeFilter: ["hidden"],
+});
+selectionObserver.observe(patternSvg, { childList: true });
+
 const hintObserver = new MutationObserver(normalizeToolHint);
 hintObserver.observe(toolHint, { childList: true, subtree: true, characterData: true });
 normalizeToolHint();
 
-window.addEventListener("click", () => queueMicrotask(syncSelectionPalette), true);
-window.addEventListener("pointerup", () => queueMicrotask(syncSelectionPalette), true);
+// Bubble-phase listeners run after the editor has updated selection/model state.
+window.addEventListener("click", () => queueMicrotask(syncSelectionPalette));
+window.addEventListener("pointerup", () => queueMicrotask(syncSelectionPalette));
 fileInput.addEventListener("change", () => window.setTimeout(forceNeutralDrawing, 0));
 resetButton.addEventListener("click", () => window.setTimeout(forceNeutralDrawing, 0));
 patternSvg.addEventListener("keydown", () => queueMicrotask(syncSelectionPalette));
