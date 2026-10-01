@@ -88,5 +88,5 @@ function slug(value: string): string {
 function required<T extends Element>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing #${id}`);
-  return element as T;
+  return element as unknown as T;
 }
